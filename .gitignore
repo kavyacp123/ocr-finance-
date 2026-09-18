@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.venv/
+venv/
+env/
+.python-version
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Local environment / secrets
+.env
+.env.*
+.envrc
+
+# Project-generated outputs
+outputs/
+*.log
+.easyocr/
+.paddlex/
+:memory:.ses
+finance.db
+Sales.pdf
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+Thumbs.db

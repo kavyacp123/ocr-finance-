@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finance Document Intelligence & Investigation Platform</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="min-h-screen flex flex-col bg-[#090d16] text-slate-100 antialiased">
+
+  <!-- Top Navbar -->
+  <header class="border-b border-slate-800/80 bg-slate-900/70 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="h-9 w-9 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20 font-bold text-white text-lg">
+          F
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
+            Finance Intelligence Platform
+            <span class="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full font-mono font-medium">v1.0 MVP</span>
+          </h1>
+          <p class="text-xs text-slate-400">OCR • Knowledge Graph • Semantic Vector • Copilot • Investigation</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <div class="flex items-center gap-2 text-xs bg-slate-800/90 border border-slate-700/60 px-3 py-1.5 rounded-lg">
+          <span class="text-slate-400">Org:</span>
+          <input id="orgIdInput" type="text" value="org_default" class="bg-transparent border-none text-blue-400 font-mono font-semibold focus:outline-none w-28">
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+          <span id="systemStatusDot" class="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="systemStatusText" class="text-slate-300 font-medium">Online</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-2 border-t border-slate-800/60 overflow-x-auto">
+      <button class="tab-btn active px-4 py-2.5 text-xs font-semibold rounded-t-lg transition flex items-center gap-1.5" data-tab="dashboard">
+        📊 Overview Dashboard
+      </button>
+      <button class="tab-btn px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-white rounded-t-lg transition flex items-center gap-1.5" data-tab="ingest">
+        📄 Ingestion & Extraction
+      </button>
+      <button class="tab-btn px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-white rounded-t-lg transition flex items-center gap-1.5" data-tab="copilot">
+        💬 Finance Copilot
+      </button>
+      <button class="tab-btn px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-white rounded-t-lg transition flex items-center gap-1.5" data-tab="investigate">
+        🔍 Investigation Studio
+      </button>
+      <button class="tab-btn px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-white rounded-t-lg transition flex items-center gap-1.5" data-tab="search">
+        🕸️ Search & Graph
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+    <!-- TAB 1: DASHBOARD -->
+    <section id="tab-dashboard" class="tab-content space-y-6">
+      <div class="flex justify-between items-center">
+        <div>
+          <h2 class="text-xl font-bold text-white">Financial Analytics Dashboard</h2>
+          <p class="text-sm text-slate-400">Live operational overview from SQL analytics and compliance repository</p>
+        </div>
+        <button id="refreshDashboardBtn" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium rounded-lg border border-slate-700 flex items-center gap-1 transition">
+          🔄 Refresh
+        </button>
+      </div>
+
+      <!-- KPI Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div class="glass-card rounded-xl p-4">
+          <p class="text-xs text-slate-400 font-medium">Total Spend</p>
+          <h3 id="kpi-spend" class="text-lg font-bold text-emerald-400 mt-1">₹0.00</h3>
+        </div>
+        <div class="glass-card rounded-xl p-4">
+          <p class="text-xs text-slate-400 font-medium">Invoices</p>
+          <h3 id="kpi-invoices" class="text-lg font-bold text-blue-400 mt-1">0</h3>
+        </div>
+        <div class="glass-card rounded-xl p-4">
+          <p class="text-xs text-slate-400 font-medium">Purchase Orders</p>
+          <h3 id="kpi-pos" class="text-lg font-bold text-indigo-400 mt-1">0</h3>
+        </div>
+        <div class="glass-card rounded-xl p-4">
+          <p class="text-xs text-slate-400 font-medium">Rule Violations</p>
+          <h3 id="kpi-violations" class="text-lg font-bold text-amber-400 mt-1">0</h3>
+        </div>
+        <div class="glass-card rounded-xl p-4">
+          <p class="text-xs text-slate-400 font-medium">Duplicates</p>
+          <h3 id="kpi-duplicates" class="text-lg font-bold text-rose-400 mt-1">0</h3>
+        </div>
+        <div class="glass-card rounded-xl p-4">
+          <p class="text-xs text-slate-400 font-medium">Spend Anomalies</p>
+          <h3 id="kpi-anomalies" class="text-lg font-bold text-purple-400 mt-1">0</h3>
+        </div>
+      </div>
+
+      <!-- Compliance & Outlier Tables -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Rule Violations -->
+        <div class="glass-card rounded-xl p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+              ⚠️ Open Compliance & Rule Violations
+            </h3>
+            <span id="violationCountBadge" class="badge badge-yellow">0 Open</span>
+          </div>
+          <div id="violationsList" class="space-y-2 text-xs max-h-64 overflow-y-auto">
+            <p class="text-slate-500 italic">No open rule violations recorded.</p>
+          </div>
+        </div>
+
+        <!-- Anomalies & Duplicates -->
+        <div class="glass-card rounded-xl p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+              🚨 Outliers & Duplicate Candidates
+            </h3>
+            <span id="anomalyCountBadge" class="badge badge-red">0 Flagged</span>
+          </div>
+          <div id="anomaliesList" class="space-y-2 text-xs max-h-64 overflow-y-auto">
+            <p class="text-slate-500 italic">No active anomalies flagged.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: DOCUMENT INGESTION -->
+    <section id="tab-ingest" class="tab-content hidden space-y-6">
+      <div>
+        <h2 class="text-xl font-bold text-white">Document Ingestion & Canonical Extraction</h2>
+        <p class="text-sm text-slate-400">Upload invoices or purchase orders for OCR, entity resolution, and provenance mapping</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Upload Form -->
+        <div class="glass-card rounded-xl p-5 space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Document Classification Target</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="docTypeInvoice" type="button" class="px-3 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white border border-blue-500">
+                Invoice (/process)
+              </button>
+              <button id="docTypePO" type="button" class="px-3 py-2 text-xs font-semibold rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700">
+                Purchase Order (/purchase-orders)
+              </button>
+            </div>
+          </div>
+
+          <!-- Drag and Drop Dropzone -->
+          <div id="dropzone" class="border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-xl p-6 text-center cursor-pointer transition bg-slate-900/40">
+            <input type="file" id="fileInput" class="hidden" accept=".pdf,.png,.jpg,.jpeg">
+            <div class="text-3xl mb-2">📥</div>
+            <p class="text-xs font-medium text-slate-200">Click or Drag PDF/Image here</p>
+            <p class="text-[10px] text-slate-500 mt-1">Supports PDF, PNG, JPG (Invoice or PO)</p>
+            <p id="selectedFileName" class="text-xs text-blue-400 font-mono mt-2 hidden"></p>
+          </div>
+
+          <button id="uploadBtn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 font-semibold text-xs rounded-lg transition shadow-lg shadow-blue-500/20 disabled:opacity-50">
+            Extract & Persist Document
+          </button>
+        </div>
+
+        <!-- Extraction Results -->
+        <div class="glass-card rounded-xl p-5 lg:col-span-2 space-y-4">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+            <h3 class="text-sm font-semibold text-white">Extracted Canonical Data</h3>
+            <div class="flex items-center gap-2">
+              <span id="extractionStatusBadge" class="badge badge-blue hidden">Ready</span>
+              <button id="toggleJsonBtn" class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800 border border-slate-700 hidden">
+                Toggle Raw JSON
+              </button>
+            </div>
+          </div>
+
+          <div id="ingestionEmptyState" class="py-12 text-center text-slate-500 text-xs">
+            Upload a document to view structured financial fields, line items, and visual bounding boxes.
+          </div>
+
+          <!-- Structured Result Content -->
+          <div id="ingestionResultContent" class="space-y-4 hidden text-xs">
+            <!-- Header Key Fields -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+              <div>
+                <span class="text-slate-400 text-[10px] uppercase">Vendor</span>
+                <p id="resVendor" class="font-semibold text-white truncate">-</p>
+              </div>
+              <div>
+                <span class="text-slate-400 text-[10px] uppercase">Number</span>
+                <p id="resNumber" class="font-semibold text-white font-mono">-</p>
+              </div>
+              <div>
+                <span class="text-slate-400 text-[10px] uppercase">Total Amount</span>
+                <p id="resTotal" class="font-bold text-emerald-400">-</p>
+              </div>
+              <div>
+                <span class="text-slate-400 text-[10px] uppercase">Date</span>
+                <p id="resDate" class="font-semibold text-white">-</p>
+              </div>
+            </div>
+
+            <!-- Line Items Table -->
+            <div>
+              <h4 class="font-semibold text-slate-300 mb-2">Line Items (<span id="lineItemsCount">0</span>)</h4>
+              <div class="overflow-x-auto border border-slate-800 rounded-lg max-h-52">
+                <table class="w-full text-left">
+                  <thead class="bg-slate-900/80 text-[10px] uppercase text-slate-400">
+                    <tr>
+                      <th class="p-2">Description</th>
+                      <th class="p-2">Code</th>
+                      <th class="p-2 text-right">Qty</th>
+                      <th class="p-2 text-right">Unit Price</th>
+                      <th class="p-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="lineItemsBody" class="divide-y divide-slate-800 text-slate-200">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Raw JSON Inspector -->
+            <pre id="rawJsonView" class="p-3 bg-slate-950 rounded-lg text-[11px] font-mono text-emerald-300 max-h-60 overflow-y-auto hidden"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: FINANCE COPILOT -->
+    <section id="tab-copilot" class="tab-content hidden space-y-6">
+      <div>
+        <h2 class="text-xl font-bold text-white">Finance Copilot & Deterministic Query Planner</h2>
+        <p class="text-sm text-slate-400">Natural language questions routed strictly to SQL, Graph, Vector, Rules, or Analytics tools without arithmetic hallucinations</p>
+      </div>
+
+      <!-- Quick prompts -->
+      <div class="flex flex-wrap gap-2 text-xs">
+        <span class="text-slate-500 py-1 font-medium">Try asking:</span>
+        <button class="copilot-chip bg-slate-800 hover:bg-slate-700 text-blue-300 px-2.5 py-1 rounded-full border border-slate-700 transition">
+          How much did we spend with AWS last quarter?
+        </button>
+        <button class="copilot-chip bg-slate-800 hover:bg-slate-700 text-blue-300 px-2.5 py-1 rounded-full border border-slate-700 transition">
+          Show all unpaid invoices
+        </button>
+        <button class="copilot-chip bg-slate-800 hover:bg-slate-700 text-blue-300 px-2.5 py-1 rounded-full border border-slate-700 transition">
+          Find invoices mentioning GPU compute
+        </button>
+        <button class="copilot-chip bg-slate-800 hover:bg-slate-700 text-blue-300 px-2.5 py-1 rounded-full border border-slate-700 transition">
+          Which AWS invoices have PO mismatches?
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Chat & Query Input Panel -->
+        <div class="glass-card rounded-xl p-5 lg:col-span-2 space-y-4">
+          <form id="copilotForm" class="space-y-3">
+            <div class="relative">
+              <textarea id="copilotQuestion" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="Type your financial question here..."></textarea>
+            </div>
+            <div class="flex justify-between items-center">
+              <label class="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                <input type="checkbox" id="includePlanCheck" class="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-0">
+                Include execution DAG query plan
+              </label>
+              <button type="submit" id="copilotSubmitBtn" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-xs font-semibold rounded-lg shadow-lg shadow-blue-500/20 transition flex items-center gap-1.5">
+                <span>Ask Copilot</span> ⚡
+              </button>
+            </div>
+          </form>
+
+          <!-- Response Display -->
+          <div id="copilotResponseCard" class="border-t border-slate-800 pt-4 hidden space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span id="resIntentBadge" class="badge badge-blue font-mono">INTENT</span>
+                <span id="resConfidenceBadge" class="badge badge-green font-mono">Confidence 0.95</span>
+              </div>
+              <span class="text-[11px] text-slate-500 font-mono" id="resQueryId">qry_xxx</span>
+            </div>
+
+            <!-- Answer Box -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 text-sm leading-relaxed text-slate-100 whitespace-pre-wrap font-sans" id="copilotAnswerText">
+            </div>
+
+            <!-- Metrics Strip -->
+            <div id="copilotMetricsStrip" class="flex flex-wrap gap-2 text-xs hidden">
+            </div>
+
+            <!-- Evidence Accordion -->
+            <div class="border border-slate-800/80 rounded-xl overflow-hidden bg-slate-900/40">
+              <button id="evidenceToggleBtn" class="w-full p-3 text-left text-xs font-semibold text-slate-300 flex justify-between items-center hover:bg-slate-800/50">
+                <span>📑 Provenance Evidence (<span id="evidenceCount">0</span> items)</span>
+                <span id="evidenceToggleArrow">▼</span>
+              </button>
+              <div id="evidenceDrawer" class="p-3 space-y-2 border-t border-slate-800 text-xs hidden max-h-60 overflow-y-auto">
+              </div>
+            </div>
+
+            <!-- Query Plan (Optional) -->
+            <div id="queryPlanDrawer" class="border border-slate-800 rounded-xl p-3 bg-slate-950 hidden">
+              <h5 class="text-xs font-semibold text-slate-400 mb-2 font-mono">Execution Plan (DAG)</h5>
+              <pre id="queryPlanJson" class="text-[11px] text-blue-300 font-mono overflow-x-auto"></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Context & State Sidebar -->
+        <div class="glass-card rounded-xl p-5 space-y-4">
+          <h3 class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Multi-Turn Context State</h3>
+          <p class="text-[11px] text-slate-500">The Copilot retains structured entities (never raw chat history) to answer conversational follow-up questions.</p>
+          
+          <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 text-xs space-y-2 font-mono">
+            <div>
+              <span class="text-slate-500">Last Vendor:</span>
+              <p id="ctxLastVendor" class="text-blue-400 font-semibold truncate">-</p>
+            </div>
+            <div>
+              <span class="text-slate-500">Last Date Range:</span>
+              <p id="ctxLastDates" class="text-blue-400 truncate">-</p>
+            </div>
+            <div>
+              <span class="text-slate-500">Last Intent:</span>
+              <p id="ctxLastIntent" class="text-purple-400 truncate">-</p>
+            </div>
+          </div>
+
+          <button id="clearContextBtn" class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-400 hover:text-white rounded border border-slate-700 transition">
+            Reset Context
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: INVESTIGATION STUDIO -->
+    <section id="tab-investigate" class="tab-content hidden space-y-6">
+      <div>
+        <h2 class="text-xl font-bold text-white">Financial Investigation Studio</h2>
+        <p class="text-sm text-slate-400">Multi-step forensic state machine analyzing baseline vs target spend deltas, price inflation, volume surges, and anomalies</p>
+      </div>
+
+      <!-- Sample Investigation Chips -->
+      <div class="flex flex-wrap gap-2 text-xs">
+        <span class="text-slate-500 py-1 font-medium">Sample Questions:</span>
+        <button class="investigate-chip bg-slate-800 hover:bg-slate-700 text-purple-300 px-2.5 py-1 rounded-full border border-slate-700 transition">
+          Why did AWS spending increase in August 2026?
+        </button>
+        <button class="investigate-chip bg-slate-800 hover:bg-slate-700 text-purple-300 px-2.5 py-1 rounded-full border border-slate-700 transition">
+          Investigate spend increase with AWS
+        </button>
+      </div>
+
+      <!-- Query Form -->
+      <div class="glass-card rounded-xl p-5 space-y-4">
+        <form id="investigationForm" class="flex gap-3">
+          <input id="investigationQuestion" type="text" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500" placeholder="e.g., Why did AWS spending increase in August 2026?">
+          <button type="submit" id="investigateSubmitBtn" class="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-xs font-semibold rounded-xl shadow-lg shadow-purple-500/20 transition flex items-center gap-2">
+            <span>Investigate</span> 🔬
+          </button>
+        </form>
+
+        <!-- Loading State -->
+        <div id="investigationLoading" class="py-12 text-center space-y-3 hidden">
+          <div class="inline-block animate-spin text-3xl">⚙️</div>
+          <p class="text-xs font-semibold text-purple-400">Executing Multi-Step Investigation DAG...</p>
+          <p class="text-[11px] text-slate-500">Checking baseline spend ➔ target period ➔ line-item alignment ➔ price inflation ➔ anomalies</p>
+        </div>
+
+        <!-- Investigation Report Output -->
+        <div id="investigationReportCard" class="space-y-6 hidden border-t border-slate-800 pt-6">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span class="badge badge-purple text-xs font-mono" id="repType">VENDOR_SPEND_INCREASE</span>
+              <h3 class="text-lg font-bold text-white mt-1" id="repTitle">-</h3>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="badge badge-green" id="repConfidence">Confidence 0.95</span>
+              <span class="text-xs text-slate-500 font-mono" id="repId">inv_xxx</span>
+            </div>
+          </div>
+
+          <!-- Spend Delta Comparison Banner -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-900/80 p-4 rounded-xl border border-slate-800">
+            <div class="border-r border-slate-800/80 pr-4">
+              <span class="text-xs text-slate-400 uppercase font-semibold">Baseline Period</span>
+              <p class="text-xs text-slate-500 mt-0.5" id="repBaselineDates">-</p>
+              <h4 class="text-xl font-bold text-white mt-1" id="repBaselineSpend">₹0.00</h4>
+            </div>
+            <div class="border-r border-slate-800/80 pr-4">
+              <span class="text-xs text-slate-400 uppercase font-semibold">Target Period</span>
+              <p class="text-xs text-slate-500 mt-0.5" id="repTargetDates">-</p>
+              <h4 class="text-xl font-bold text-white mt-1" id="repTargetSpend">₹0.00</h4>
+            </div>
+            <div>
+              <span class="text-xs text-slate-400 uppercase font-semibold">Spend Delta</span>
+              <p class="text-xs text-slate-500 mt-0.5" id="repDeltaPct">+0%</p>
+              <h4 class="text-xl font-bold text-rose-400 mt-1" id="repDeltaAmount">+₹0.00</h4>
+            </div>
+          </div>
+
+          <!-- Executive Summary & Conclusion -->
+          <div class="space-y-3">
+            <div class="bg-blue-950/30 border border-blue-900/40 p-4 rounded-xl text-xs text-blue-200">
+              <strong class="text-blue-100 uppercase tracking-wide text-[10px] block mb-1">Executive Summary</strong>
+              <p id="repSummary" class="text-sm leading-relaxed text-slate-200">-</p>
+            </div>
+            <div class="bg-emerald-950/30 border border-emerald-900/40 p-4 rounded-xl text-xs text-emerald-200">
+              <strong class="text-emerald-100 uppercase tracking-wide text-[10px] block mb-1">Primary Conclusion</strong>
+              <p id="repConclusion" class="text-sm leading-relaxed text-slate-200">-</p>
+            </div>
+          </div>
+
+          <!-- Spend Drivers Breakdown -->
+          <div>
+            <h4 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+              <span>Attributed Spend Drivers</span>
+              <span class="text-xs text-slate-500 font-normal">(Decomposed mathematically)</span>
+            </h4>
+            <div id="repDriversList" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            </div>
+          </div>
+
+          <!-- Anomalies & Discrepancies -->
+          <div id="repAnomaliesContainer" class="hidden">
+            <h4 class="text-sm font-semibold text-white mb-2">Statistical Anomalies & Discrepancies</h4>
+            <div id="repAnomaliesList" class="space-y-2 text-xs">
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: SEARCH & GRAPH -->
+    <section id="tab-search" class="tab-content hidden space-y-6">
+      <div>
+        <h2 class="text-xl font-bold text-white">Semantic Search & Knowledge Graph Explorer</h2>
+        <p class="text-sm text-slate-400">Directly query Phase 5 vector embeddings and Phase 4 entity relationships</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Semantic Search Tester -->
+        <div class="glass-card rounded-xl p-5 space-y-4">
+          <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+            🔎 Vector Semantic Retrieval
+          </h3>
+          <form id="searchForm" class="flex gap-2">
+            <input id="searchInput" type="text" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100" placeholder="e.g., GPU compute cluster or cloud license">
+            <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-xs font-semibold rounded-lg transition">
+              Search
+            </button>
+          </form>
+
+          <div id="searchResults" class="space-y-3 text-xs max-h-96 overflow-y-auto">
+            <p class="text-slate-500 italic">Enter a query to search indexed document chunks and line items.</p>
+          </div>
+        </div>
+
+        <!-- Knowledge Graph Stats -->
+        <div class="glass-card rounded-xl p-5 space-y-4">
+          <div class="flex justify-between items-center">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+              🕸️ Knowledge Graph Network
+            </h3>
+            <button id="refreshGraphBtn" class="text-xs text-slate-400 hover:text-white px-2 py-1 bg-slate-800 rounded">
+              Refresh Stats
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div class="bg-slate-900 p-3 rounded-lg border border-slate-800">
+              <span class="text-slate-500">Total Graph Nodes</span>
+              <p id="graphNodesCount" class="text-lg font-bold text-blue-400 mt-1">0</p>
+            </div>
+            <div class="bg-slate-900 p-3 rounded-lg border border-slate-800">
+              <span class="text-slate-500">Total Relationships</span>
+              <p id="graphEdgesCount" class="text-lg font-bold text-indigo-400 mt-1">0</p>
+            </div>
+          </div>
+
+          <div>
+            <h4 class="text-xs font-semibold text-slate-400 mb-2">Trace Vendor Subgraph</h4>
+            <div class="flex gap-2">
+              <input id="graphVendorInput" type="text" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100" placeholder="Enter Vendor ID or Name">
+              <button id="traceGraphBtn" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold rounded-lg transition">
+                Trace
+              </button>
+            </div>
+          </div>
+
+          <div id="graphTraceResult" class="p-3 bg-slate-950 rounded-lg text-xs font-mono text-slate-300 max-h-48 overflow-y-auto hidden">
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
