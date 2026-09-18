@@ -58,7 +58,7 @@ def tool_db():
         invoice_date=date(2026, 8, 15),
         total_amount=Decimal("15000.00"),
         amount_due=Decimal("15000.00"),
-        payment_status="UNPAID",
+        payment_status="unpaid",
     )
     db.add_all([inv1, inv2])
     db.flush()
@@ -132,15 +132,15 @@ async def test_sql_tool_unpaid(tool_db):
 @pytest.mark.asyncio
 async def test_graph_tool():
     adapter = NetworkXGraphAdapter()
-    adapter.upsert_node("vendor_1", "Vendor", {"name": "AWS"})
-    adapter.upsert_node("inv_1", "Invoice", {"number": "INV-1"})
-    adapter.upsert_edge("vendor_1", "inv_1", "ISSUED", {})
+    adapter.upsert_node("ven_1", "Vendor", {"name": "AWS", "organization_id": "org_default"})
+    adapter.upsert_node("inv_1", "Invoice", {"number": "INV-1", "organization_id": "org_default"})
+    adapter.upsert_edge("ven_1", "inv_1", "ISSUED", {"organization_id": "org_default"})
 
     graph_tool = FinanceGraphTool(graph_adapter=adapter)
     res = await graph_tool.execute(
         step_id="s3",
         operation=ToolOperation.GET_VENDOR_NETWORK,
-        arguments={"vendor_id": "vendor_1"},
+        arguments={"vendor_id": "ven_1"},
         organization_id="org_default",
     )
     assert res.success is True

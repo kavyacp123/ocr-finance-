@@ -18,7 +18,7 @@ ANCHOR_LABELS: Dict[str, List[re.Pattern]] = {
         re.compile(r"^(due\s*date|payment\s*due|pay\s*by)\s*[:\-]?$", re.I),
     ],
     "po_number": [
-        re.compile(r"^(po\s*(?:number|no|#)|p\.?o\.?\s*#?|purchase\s*order\s*(?:no|number|#))\s*[:\-]?$", re.I),
+        re.compile(r"^(po\s*(?:number|no|#)|p\.?\s*o\.?\s*(?:number|no|#)|purchase\s*order\s*(?:no|number|#))\s*[:\-]?$", re.I),
     ],
     "vendor_tax_id": [
         re.compile(r"^(gstin|gst\s*no\.?|vendor\s*gstin|tin|tax\s*id)\s*[:\-]?$", re.I),

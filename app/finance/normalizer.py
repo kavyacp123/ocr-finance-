@@ -146,6 +146,10 @@ def normalize_currency(raw_str: Optional[str]) -> str:
         return "INR"
 
     lowered = raw_str.lower()
+    indian_signals = ("gstin", "cgst", "sgst", "ifsc", "rupees", "udyam")
+    if "₹" in raw_str or "inr" in lowered or any(signal in lowered for signal in indian_signals):
+        return "INR"
+
     for symbol, code in CURRENCY_MAP.items():
         if symbol in lowered:
             return code

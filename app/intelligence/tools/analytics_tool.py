@@ -88,7 +88,7 @@ class FinanceAnalyticsTool(BaseFinanceTool):
                     db.query(func.sum(InvoiceModel.amount_due))
                     .filter(
                         InvoiceModel.organization_id == organization_id,
-                        InvoiceModel.payment_status.in_(["UNPAID", "PENDING", "PARTIALLY_PAID"]),
+                        func.lower(InvoiceModel.payment_status).in_(["unpaid", "pending", "partially_paid"]),
                     )
                     .scalar()
                     or Decimal("0.00")

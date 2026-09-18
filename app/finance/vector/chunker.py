@@ -39,7 +39,7 @@ class DocumentChunker:
 
             # 2. Individual layout region chunks
             for region in page.regions:
-                text = (region.clean_content or region.raw_content or "").strip()
+                text = (region.clean_content or region.raw_ocr_output or "").strip()
                 if not text:
                     continue
 

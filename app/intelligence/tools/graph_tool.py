@@ -66,21 +66,21 @@ class FinanceGraphTool(BaseFinanceTool):
             )
 
         if operation == ToolOperation.GET_INVOICE_RELATIONSHIPS:
-            return self._get_invoice_relationships(step_id, arguments)
+            return self._get_invoice_relationships(step_id, arguments, organization_id)
         elif operation == ToolOperation.GET_VENDOR_NETWORK:
-            return self._get_vendor_network(step_id, arguments)
+            return self._get_vendor_network(step_id, arguments, organization_id)
         elif operation == ToolOperation.GET_INVOICE_PO:
-            return self._get_invoice_po(step_id, arguments)
+            return self._get_invoice_po(step_id, arguments, organization_id)
         elif operation == ToolOperation.GET_INVOICE_PAYMENTS:
-            return self._get_invoice_payments(step_id, arguments)
+            return self._get_invoice_payments(step_id, arguments, organization_id)
         elif operation == ToolOperation.GET_VENDOR_BANK_ACCOUNTS:
-            return self._get_vendor_bank_accounts(step_id, arguments)
+            return self._get_vendor_bank_accounts(step_id, arguments, organization_id)
         elif operation == ToolOperation.GET_CONNECTED_DOCUMENTS:
-            return self._get_connected_documents(step_id, arguments)
+            return self._get_connected_documents(step_id, arguments, organization_id)
         elif operation == ToolOperation.GET_ENTITY_NEIGHBORHOOD:
-            return self._get_neighborhood(step_id, arguments)
+            return self._get_neighborhood(step_id, arguments, organization_id)
         elif operation == ToolOperation.FIND_PATH:
-            return self._find_path(step_id, arguments)
+            return self._find_path(step_id, arguments, organization_id)
         else:
             return ToolResult(
                 step_id=step_id,
@@ -93,7 +93,7 @@ class FinanceGraphTool(BaseFinanceTool):
 
     # ── Handlers ──────────────────────────────────────────────────────────
 
-    def _get_invoice_relationships(self, step_id: str, args: dict) -> ToolResult:
+    def _get_invoice_relationships(self, step_id: str, args: dict, organization_id: str) -> ToolResult:
         inv_id = args.get("invoice_id")
         if not inv_id:
             return ToolResult(
@@ -105,10 +105,9 @@ class FinanceGraphTool(BaseFinanceTool):
                 execution_time_ms=0,
             )
 
-        subgraph = self.graph_adapter.get_subgraph(f"inv_{inv_id}", max_depth=2)
-        # Also try raw invoice_id if prefixed didn't yield anything
+        subgraph = self._get_scoped_subgraph(inv_id, 2, organization_id)
         if not subgraph.nodes:
-            subgraph = self.graph_adapter.get_subgraph(inv_id, max_depth=2)
+            subgraph = self._get_scoped_subgraph(f"inv_{inv_id}", 2, organization_id)
 
         data = {
             "root": inv_id,
@@ -141,11 +140,21 @@ class FinanceGraphTool(BaseFinanceTool):
             execution_time_ms=0,
         )
 
-    def _get_vendor_network(self, step_id: str, args: dict) -> ToolResult:
+    def _get_vendor_network(self, step_id: str, args: dict, organization_id: str) -> ToolResult:
         vendor_id = args.get("vendor_id")
+        if not vendor_id:
+            return ToolResult(
+                step_id=step_id,
+                tool=self.tool_name,
+                operation=ToolOperation.GET_VENDOR_NETWORK,
+                success=False,
+                error="vendor_id required",
+                execution_time_ms=0,
+            )
         depth = args.get("depth", 2)
-        node_id = f"vendor_{vendor_id}" if not vendor_id.startswith("vendor_") else vendor_id
-        subgraph = self.graph_adapter.get_subgraph(node_id, max_depth=depth)
+        subgraph = self._get_scoped_subgraph(vendor_id, depth, organization_id)
+        if not subgraph.nodes and not vendor_id.startswith("vendor_"):
+            subgraph = self._get_scoped_subgraph(f"vendor_{vendor_id}", depth, organization_id)
 
         data = {
             "vendor_id": vendor_id,
@@ -173,10 +182,10 @@ class FinanceGraphTool(BaseFinanceTool):
             execution_time_ms=0,
         )
 
-    def _get_invoice_po(self, step_id: str, args: dict) -> ToolResult:
+    def _get_invoice_po(self, step_id: str, args: dict, organization_id: str) -> ToolResult:
         inv_id = args.get("invoice_id")
         node_id = f"inv_{inv_id}" if not inv_id.startswith("inv_") else inv_id
-        subgraph = self.graph_adapter.get_subgraph(node_id, max_depth=1)
+        subgraph = self._get_scoped_subgraph(node_id, 1, organization_id)
 
         po_nodes = [n for n in subgraph.nodes if n.label in ("PurchaseOrder", "PO")]
         return ToolResult(
@@ -200,10 +209,10 @@ class FinanceGraphTool(BaseFinanceTool):
             execution_time_ms=0,
         )
 
-    def _get_invoice_payments(self, step_id: str, args: dict) -> ToolResult:
+    def _get_invoice_payments(self, step_id: str, args: dict, organization_id: str) -> ToolResult:
         inv_id = args.get("invoice_id")
         node_id = f"inv_{inv_id}" if not inv_id.startswith("inv_") else inv_id
-        subgraph = self.graph_adapter.get_subgraph(node_id, max_depth=1)
+        subgraph = self._get_scoped_subgraph(node_id, 1, organization_id)
 
         pmt_nodes = [n for n in subgraph.nodes if n.label in ("Payment", "PMT")]
         return ToolResult(
@@ -227,10 +236,12 @@ class FinanceGraphTool(BaseFinanceTool):
             execution_time_ms=0,
         )
 
-    def _get_vendor_bank_accounts(self, step_id: str, args: dict) -> ToolResult:
+    def _get_vendor_bank_accounts(self, step_id: str, args: dict, organization_id: str) -> ToolResult:
         vendor_id = args.get("vendor_id")
         node_id = f"vendor_{vendor_id}" if not vendor_id.startswith("vendor_") else vendor_id
-        subgraph = self.graph_adapter.get_subgraph(node_id, max_depth=1)
+        subgraph = self._get_scoped_subgraph(vendor_id, 1, organization_id)
+        if not subgraph.nodes:
+            subgraph = self._get_scoped_subgraph(node_id, 1, organization_id)
 
         bank_nodes = [n for n in subgraph.nodes if n.label in ("BankAccount", "Bank")]
         return ToolResult(
@@ -243,10 +254,10 @@ class FinanceGraphTool(BaseFinanceTool):
             execution_time_ms=0,
         )
 
-    def _get_connected_documents(self, step_id: str, args: dict) -> ToolResult:
+    def _get_connected_documents(self, step_id: str, args: dict, organization_id: str) -> ToolResult:
         entity_id = args.get("entity_id")
         depth = args.get("depth", 2)
-        subgraph = self.graph_adapter.get_subgraph(entity_id, max_depth=depth)
+        subgraph = self._get_scoped_subgraph(entity_id, depth, organization_id)
         return ToolResult(
             step_id=step_id,
             tool=self.tool_name,
@@ -261,10 +272,10 @@ class FinanceGraphTool(BaseFinanceTool):
             execution_time_ms=0,
         )
 
-    def _get_neighborhood(self, step_id: str, args: dict) -> ToolResult:
+    def _get_neighborhood(self, step_id: str, args: dict, organization_id: str) -> ToolResult:
         node_id = args.get("node_id")
         depth = args.get("depth", 1)
-        subgraph = self.graph_adapter.get_subgraph(node_id, max_depth=depth)
+        subgraph = self._get_scoped_subgraph(node_id, depth, organization_id)
         return ToolResult(
             step_id=step_id,
             tool=self.tool_name,
@@ -275,11 +286,14 @@ class FinanceGraphTool(BaseFinanceTool):
             execution_time_ms=0,
         )
 
-    def _find_path(self, step_id: str, args: dict) -> ToolResult:
+    def _find_path(self, step_id: str, args: dict, organization_id: str) -> ToolResult:
         start_id = args.get("start_node_id")
         end_id = args.get("end_node_id")
         max_depth = args.get("max_depth", 4)
-        paths = self.graph_adapter.find_paths(start_id, end_id, max_depth=max_depth)
+        paths = [
+            path for path in self.graph_adapter.find_paths(start_id, end_id, max_depth=max_depth)
+            if all(self._node_belongs_to_org(node_id, organization_id) for node_id in path)
+        ]
         return ToolResult(
             step_id=step_id,
             tool=self.tool_name,
@@ -289,3 +303,24 @@ class FinanceGraphTool(BaseFinanceTool):
             record_count=len(paths),
             execution_time_ms=0,
         )
+
+    def _get_scoped_subgraph(self, node_id: str, depth: int, organization_id: str) -> GraphSubgraph:
+        if not self._node_belongs_to_org(node_id, organization_id):
+            return GraphSubgraph()
+        subgraph = self.graph_adapter.get_subgraph(node_id, max_depth=depth)
+        allowed_ids = {
+            node.id
+            for node in subgraph.nodes
+            if node.properties.get("organization_id") == organization_id
+        }
+        return GraphSubgraph(
+            nodes=[node for node in subgraph.nodes if node.id in allowed_ids],
+            edges=[
+                edge for edge in subgraph.edges
+                if edge.source_id in allowed_ids and edge.target_id in allowed_ids
+            ],
+        )
+
+    def _node_belongs_to_org(self, node_id: str, organization_id: str) -> bool:
+        node = self.graph_adapter.get_node(node_id)
+        return bool(node and node.properties.get("organization_id") == organization_id)

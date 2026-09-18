@@ -15,7 +15,7 @@ SAME_REGION_PATTERNS = {
         re.compile(r"\b(?:due\s*date|payment\s*due)\s*[:\-]?\s*([0-9]{1,4}[/\-\.][0-9]{1,2}[/\-\.][0-9]{1,4}|[0-9]{1,2}[\s\-]+[A-Za-z]{3,9}[\s\-]+[0-9]{2,4}|[A-Za-z]{3,9}[\s\-]+[0-9]{1,2},?[\s\-]+[0-9]{2,4})", re.I),
     ],
     "po_number": [
-        re.compile(r"\b(?:po\s*(?:number|no|#)|p\.?o\.?\s*#?|purchase\s*order\s*(?:no|number|#))\s*[:\-#]?\s*([A-Za-z0-9\-_/]+)", re.I),
+        re.compile(r"\b(?:po\s*(?:number|no|#)|p\.?\s*o\.?\s*(?:number|no|#)|purchase\s*order\s*(?:no|number|#))\s*[:\-#]?\s*([A-Za-z0-9\-_/]+)", re.I),
     ],
     "vendor_tax_id": [
         re.compile(r"\b(?:vendor\s*gstin|seller\s*gstin|gstin|gst\s*no\.?|gst\s*in)\s*[:\-]?\s*([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})", re.I),

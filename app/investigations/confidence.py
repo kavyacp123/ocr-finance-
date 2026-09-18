@@ -20,7 +20,11 @@ class InvestigationConfidenceCalculator:
     def calculate(context: InvestigationContext) -> float:
         delta = abs(context.spend_delta)
         if delta == Decimal("0.00"):
-            return 1.0
+            if context.baseline_invoice_count == 0 and context.target_invoice_count == 0:
+                return 0.25
+            if context.baseline_invoice_count == 0 or context.target_invoice_count == 0:
+                return 0.55
+            return 0.95 if not context.limitations else 0.75
 
         # 1. Coverage factor: how much of the delta is explained by identified drivers?
         explained = sum(

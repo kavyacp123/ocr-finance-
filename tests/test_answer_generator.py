@@ -73,3 +73,39 @@ def test_answer_generator_unpaid_invoices():
     answer = AnswerGenerator.generate("Show all unpaid invoices", plan, results, [])
     assert "INV-100" in answer.answer
     assert "5000.00" in answer.answer
+
+
+def test_answer_generator_unpaid_invoices_with_unknown_total():
+    plan = QueryPlan(
+        query_id="q2b",
+        original_question="Show all unpaid invoices",
+        normalized_question="Show all unpaid invoices",
+        intent=QueryIntent.UNPAID_INVOICES,
+        entities={},
+    )
+    results = [
+        ToolResult(
+            step_id="s1",
+            tool=ToolName.SQL,
+            operation=ToolOperation.GET_UNPAID_INVOICES,
+            success=True,
+            data={
+                "unpaid_invoices": [
+                    {
+                        "invoice_id": "inv_missing_total",
+                        "invoice_number": None,
+                        "vendor_name": None,
+                        "total_amount": None,
+                        "due_date": None,
+                    }
+                ],
+                "count": 1,
+            },
+            record_count=1,
+            execution_time_ms=10,
+        )
+    ]
+
+    answer = AnswerGenerator.generate("Show all unpaid invoices", plan, results, [])
+    assert "inv_missing_total" in answer.answer
+    assert "N/A" in answer.answer

@@ -4,7 +4,29 @@ from PIL import Image, ImageDraw
 from pathlib import Path
 
 from app.engine.pipeline import OCREngine
-from app.engine.vlm_client import MockOCRClient
+from app.engine.vlm_client import LocalOCRClient, MockOCRClient, get_ocr_client_metadata
+
+
+def test_ocr_client_metadata_reports_actual_engine():
+    assert get_ocr_client_metadata(MockOCRClient()) == ("MockEngine", "Mock OCR")
+    local_client = LocalOCRClient.__new__(LocalOCRClient)
+    assert get_ocr_client_metadata(local_client) == ("EasyOCR", "EasyOCR English")
+
+
+def test_easyocr_boxes_are_reconstructed_in_visual_row_order():
+    results = [
+        ([[500, 100], [620, 100], [620, 125], [500, 125]], "Invoice No."),
+        ([[50, 100], [220, 100], [220, 125], [50, 125]], "Bill To Party"),
+        ([[640, 100], [690, 100], [690, 125], [640, 125]], "107"),
+        ([[50, 150], [360, 150], [360, 178], [50, 178]], "MANGALAM POLY PACK INDUSTRIES"),
+    ]
+
+    text = LocalOCRClient._reconstruct_reading_order(results)
+
+    assert text.splitlines() == [
+        "Bill To Party Invoice No. 107",
+        "MANGALAM POLY PACK INDUSTRIES",
+    ]
 
 
 @pytest.mark.asyncio
@@ -33,6 +55,8 @@ async def test_pipeline_end_to_end_mock(tmp_path):
     assert len(res.pages) == 1
     assert len(res.pages[0].regions) >= 1
     assert res.markdown != ""
+    assert res.engine.inference_engine == "MockEngine"
+    assert res.engine.ocr_model == "Mock OCR"
 
     doc_base = out_dir / res.document_id
     assert (doc_base / "document.json").exists()

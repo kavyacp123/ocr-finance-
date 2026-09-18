@@ -180,10 +180,26 @@ class AnswerGenerator:
         if not invoices:
             return "There are no unpaid invoices currently recorded.", []
 
-        total_unpaid = sum(Decimal(i["total_amount"]) for i in invoices)
-        lines = [f"Found {len(invoices)} unpaid or partially paid invoice(s) totaling ₹{total_unpaid}:"]
+        known_amounts = [
+            Decimal(str(i["total_amount"]))
+            for i in invoices
+            if i.get("total_amount") is not None
+        ]
+        total_unpaid = sum(known_amounts, Decimal("0.00"))
+        unknown_count = len(invoices) - len(known_amounts)
+        if known_amounts:
+            amount_note = f" totaling ₹{total_unpaid}"
+            if unknown_count:
+                amount_note += f" across {len(known_amounts)} invoice(s) with known totals"
+        else:
+            amount_note = " with no known totals"
+        lines = [f"Found {len(invoices)} unpaid or partially paid invoice(s){amount_note}:"]
         for inv in invoices[:10]:
-            lines.append(f"- {inv['invoice_number']} ({inv['vendor_name']}): ₹{inv['total_amount']}, due {inv['due_date'] or 'N/A'}")
+            invoice_number = inv.get("invoice_number") or inv.get("invoice_id")
+            vendor_name = inv.get("vendor_name") or "Unknown vendor"
+            total_amount = inv.get("total_amount")
+            amount = f"₹{total_amount}" if total_amount is not None else "N/A"
+            lines.append(f"- {invoice_number} ({vendor_name}): {amount}, due {inv['due_date'] or 'N/A'}")
 
         if len(invoices) > 10:
             lines.append(f"... and {len(invoices) - 10} more.")

@@ -82,6 +82,33 @@ def test_table_parser_markdown():
     assert items[1].total == Decimal("2500.00")
 
 
+def test_table_parser_fragmented_easyocr_row():
+    text = (
+        "Order No. HSN /SAC Quantity Unit Rate Amount\n"
+        "Sr Description Code 3.75 18832.50\n"
+        "No 5022.00 No\n"
+        "MS BUSH 12MM*13MM*11 ID\n"
+        "Total 18,832.50"
+    )
+    region = Region(
+        id="p1_fullpage",
+        page_number=1,
+        region_type="text",
+        reading_order=0,
+        bbox=BoundingBox(x1=0, y1=0, x2=1653, y2=2339),
+        clean_content=text,
+        confidence=0.8,
+    )
+
+    items = TableParser().parse_line_items("doc_fragmented", [region])
+
+    assert len(items) == 1
+    assert items[0].description == "MS BUSH 12MM*13MM*11 ID"
+    assert items[0].quantity == Decimal("5022.00")
+    assert items[0].unit_price == Decimal("3.75")
+    assert items[0].total == Decimal("18832.50")
+
+
 def test_extractor_derived_total():
     # Total is missing, but subtotal and tax exist -> extractor derives total
     regions = [
@@ -183,3 +210,69 @@ def test_extractor_full_page_mode():
     # Vendor name from entity heuristic (first line of full-page text)
     assert inv.vendor_name_raw is not None
     assert "SONAL" in inv.vendor_name_raw.value.upper()
+
+
+def test_extractor_easyocr_row_ordered_invoice():
+    full_page_text = (
+        "HARI OM\n"
+        "SONAL ENTERPRISES Mobile : 78784 72486\n"
+        "A2/204, PALMERA BUILDING, VADODARA, GUJARAT\n"
+        "TAX INVOICE ORIGINAL FOR RECIPIENT\n"
+        "Bill To Party Invoice No. 107 Date 28-08-2025\n"
+        "MANGALAM POLY PACK INDUSTRIES Challan No. Date\n"
+        "GSTIN 24EBDPP2639N1Z9 State Code 24\n"
+        "Sr No Description HSN/SAC Code Quantity Unit Rate Amount\n"
+        "1 MS BUSH 12MM*13MM*11 ID 5022.00 No 3.75 18832.50\n"
+        "Total 18,832.50\n"
+        "CGST 9.00% 1,694.93\n"
+        "SGST 9.00% 1,694.93\n"
+        "Rupees Twenty Two Thousand Two Hundred Twenty Two Only\n"
+        "Grand Total 22,222.00\n"
+    )
+    page = PageResult(
+        page_number=1,
+        width=1653,
+        height=2339,
+        pipeline_decision=PipelineDecision(
+            requested_mode="auto",
+            selected_mode="full_page",
+            reason="test",
+            region_count=1,
+            layout_coverage_ratio=0.6,
+            content_coverage_ratio=0.7,
+            largest_region_ratio=0.6,
+        ),
+        full_page_ocr=FullPageOCRResult(status="success", text=full_page_text),
+        regions=[
+            Region(
+                id="r1",
+                page_number=1,
+                region_type="table",
+                reading_order=1,
+                bbox=BoundingBox(x1=0, y1=0, x2=1653, y2=2339),
+            )
+        ],
+    )
+    doc = DocumentResult(
+        document_id="doc_easyocr_invoice",
+        filename="sales-page.pdf",
+        page_count=1,
+        processing_time_ms=1.0,
+        pages=[page],
+    )
+
+    inv = FinanceExtractor().extract_invoice(doc)
+
+    assert inv.invoice_number.value == "107"
+    assert inv.po_number is None
+    assert str(inv.invoice_date.value) == "2025-08-28"
+    assert inv.vendor_name_raw.value == "SONAL ENTERPRISES"
+    assert inv.buyer_name_raw.value == "MANGALAM POLY PACK INDUSTRIES"
+    assert inv.currency.value == "INR"
+    assert inv.subtotal.value == Decimal("18832.50")
+    assert inv.tax_amount.value == Decimal("3389.86")
+    assert inv.total_amount.value == Decimal("22222.00")
+    assert len(inv.line_items) == 1
+    assert inv.line_items[0].quantity == Decimal("5022.00")
+    assert inv.line_items[0].unit_price == Decimal("3.75")
+    assert inv.line_items[0].total == Decimal("18832.50")

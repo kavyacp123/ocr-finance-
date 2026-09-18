@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.models import DocumentResult
 from app.engine.pipeline import OCREngine
+from app.engine.vlm_client import VLLMOCRClient, get_ocr_client_metadata
 from app.utils.files import SUPPORTED_EXTENSIONS, UnsupportedDocumentError, DocumentRenderError
 from app.utils.logging import logger
 from typing import Optional, Dict, Any, List
@@ -38,15 +39,18 @@ async def health_check(request: Request):
     Health check endpoint verifying engine readiness and vLLM inference server reachability.
     """
     engine: OCREngine = request.app.state.ocr_engine
-    vllm_reachable = await engine.vlm_client.check_health()
+    engine_reachable = await engine.vlm_client.check_health()
+    inference_engine, ocr_model = get_ocr_client_metadata(engine.vlm_client)
+    vllm_reachable = engine_reachable and isinstance(engine.vlm_client, VLLMOCRClient)
 
-    status = "ok" if vllm_reachable or settings.OCR_MOCK_MODE else "degraded"
+    status = "ok" if engine_reachable else "degraded"
 
     return {
         "status": status,
         "layout_engine": settings.LAYOUT_MODEL,
-        "ocr_model": settings.VLLM_MODEL,
-        "inference_engine": "vLLM",
+        "ocr_model": ocr_model,
+        "inference_engine": inference_engine,
+        "engine_reachable": engine_reachable,
         "vllm_reachable": vllm_reachable,
         "mock_mode": settings.OCR_MOCK_MODE
     }
@@ -70,6 +74,9 @@ async def get_config():
         "ngram_size": settings.OCR_NGRAM_SIZE,
         "window_size": settings.OCR_WINDOW_SIZE,
         "mock_mode": settings.OCR_MOCK_MODE,
+        "copilot_backend": settings.COPILOT_LLM_BACKEND,
+        "graph_backend": settings.GRAPH_BACKEND,
+        "vector_embedding_provider": settings.VECTOR_EMBEDDING_PROVIDER,
         "save_debug_artifacts": settings.SAVE_DEBUG_ARTIFACTS
     }
 
@@ -1048,6 +1055,24 @@ async def list_rule_violations_endpoint(
         db.close()
 
 
+@router.get("/analytics/violations")
+async def list_violations_compat_endpoint(
+    severity: Optional[str] = Query(None, description="INFO, WARNING, or CRITICAL"),
+    status: Optional[str] = Query(None, description="OPEN, ACKNOWLEDGED, or RESOLVED"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    organization_id: str = Query(settings.DEFAULT_ORGANIZATION_ID),
+):
+    """Backward-compatible alias for the frontend's /analytics/violations route."""
+    return await list_rule_violations_endpoint(
+        severity=severity,
+        status=status,
+        limit=limit,
+        offset=offset,
+        organization_id=organization_id,
+    )
+
+
 @router.get("/analytics/duplicates")
 async def list_duplicates_endpoint(
     entity_type: Optional[str] = Query(None, description="INVOICE or PAYMENT"),
@@ -1161,6 +1186,7 @@ async def graph_trace_invoice_endpoint(
     invoice_id: str,
     request: Request,
     depth: int = Query(2, ge=1, le=5),
+    organization_id: str = Query(settings.DEFAULT_ORGANIZATION_ID),
 ):
     """
     Extracts the connected sub-graph ego network surrounding an invoice up to `depth` hops.
@@ -1168,6 +1194,9 @@ async def graph_trace_invoice_endpoint(
     if not hasattr(request.app.state, "graph_adapter"):
         raise HTTPException(status_code=503, detail="Graph engine is not initialized.")
     adapter = request.app.state.graph_adapter
+    root = adapter.get_node(invoice_id)
+    if not root or root.properties.get("organization_id") != organization_id:
+        raise HTTPException(status_code=404, detail=f"Invoice graph '{invoice_id}' not found.")
     subgraph = adapter.get_subgraph(root_node_id=invoice_id, max_depth=depth)
     return subgraph.model_dump()
 
@@ -1177,6 +1206,7 @@ async def graph_vendor_network_endpoint(
     vendor_id: str,
     request: Request,
     depth: int = Query(2, ge=1, le=4),
+    organization_id: str = Query(settings.DEFAULT_ORGANIZATION_ID),
 ):
     """
     Extracts all connected invoices, purchase orders, aliases, and banking nodes for a vendor.
@@ -1184,6 +1214,9 @@ async def graph_vendor_network_endpoint(
     if not hasattr(request.app.state, "graph_adapter"):
         raise HTTPException(status_code=503, detail="Graph engine is not initialized.")
     adapter = request.app.state.graph_adapter
+    root = adapter.get_node(vendor_id)
+    if not root or root.properties.get("organization_id") != organization_id:
+        raise HTTPException(status_code=404, detail=f"Vendor graph '{vendor_id}' not found.")
     subgraph = adapter.get_subgraph(root_node_id=vendor_id, max_depth=depth)
     return subgraph.model_dump()
 
@@ -1193,6 +1226,7 @@ async def graph_shared_entities_endpoint(
     request: Request,
     target_type: str = Query("BankAccount", description="BankAccount or TaxIdentifier"),
     min_connections: int = Query(2, ge=2, description="Minimum number of vendors sharing this entity"),
+    organization_id: str = Query(settings.DEFAULT_ORGANIZATION_ID),
 ):
     """
     Risk & Fraud analysis: detects multiple vendors sharing an identical bank account or tax ID.
@@ -1205,6 +1239,13 @@ async def graph_shared_entities_endpoint(
         shared_target_label=target_type,
         min_connections=min_connections,
     )
+    shared = [
+        result for result in shared
+        if (
+            (node := adapter.get_node(result.shared_node_id))
+            and node.properties.get("organization_id") == organization_id
+        )
+    ]
     return {
         "target_type": target_type,
         "total_shared_entities": len(shared),
@@ -1371,6 +1412,3 @@ async def investigate_endpoint(
     if not payload.include_trace:
         resp.pop("execution_trace", None)
     return resp
-
-
-

@@ -1,4 +1,5 @@
 import re
+import itertools
 from typing import List, Optional, Tuple, Dict
 from decimal import Decimal
 from app.models import Region
@@ -41,6 +42,11 @@ class TableParser:
             if not lines:
                 continue
 
+            if t_reg.id.endswith("_fullpage") and not any("|" in line for line in lines):
+                lines = self._extract_full_page_table_window(lines)
+                if not lines:
+                    continue
+
             # ── Check if Markdown Pipe Table ─────────────────────────────────
             if any("|" in l for l in lines):
                 items = self._parse_pipe_table(document_id, t_reg, lines, start_line_num=line_num)
@@ -48,6 +54,10 @@ class TableParser:
                 line_num += len(items)
             else:
                 items = self._parse_plaintext_table(document_id, t_reg, lines, start_line_num=line_num)
+                if not items and t_reg.id.endswith("_fullpage"):
+                    items = self._parse_fragmented_full_page_table(
+                        document_id, t_reg, lines, start_line_num=line_num
+                    )
                 line_items.extend(items)
                 line_num += len(items)
 
@@ -141,6 +151,89 @@ class TableParser:
 
         return items
 
+    def _parse_fragmented_full_page_table(
+        self, document_id: str, region: Region, lines: List[str], start_line_num: int
+    ) -> List[InvoiceLineItem]:
+        """Recover a single row whose columns were emitted as adjacent OCR lines."""
+        numeric_values: List[Decimal] = []
+        description_candidates: List[str] = []
+        quantity_hint: Optional[Decimal] = None
+        numeric_pattern = r"(?<![A-Za-z0-9])[0-9][0-9,]*(?:\.[0-9]+)?(?![A-Za-z0-9])"
+        for line in lines:
+            quantity_match = re.search(rf"\bNo\s+({numeric_pattern})\s+No\b", line, re.I)
+            if quantity_match:
+                quantity_hint = normalize_amount(quantity_match.group(1))
+
+            for raw in re.findall(numeric_pattern, line):
+                value = normalize_amount(raw)
+                if value is not None and value > 0:
+                    numeric_values.append(value)
+
+            dimensioned_description = bool(
+                re.search(r"\d+(?:\.\d+)?\s*(?:mm|cm|mtr|inch|in)\b", line, re.I)
+            )
+            cleaned = line if dimensioned_description else re.sub(numeric_pattern, " ", line)
+            cleaned = re.sub(r"\b(?:sr|no|description|code|hsn|sac|quantity|qty|unit|rate|amount)\b", " ", cleaned, flags=re.I)
+            cleaned = re.sub(r"\s+", " ", cleaned).strip(" -|:")
+            if len(cleaned) >= 4 and re.search(r"[A-Za-z]", cleaned):
+                description_candidates.append(cleaned)
+
+        match = None
+        for quantity, rate, total in itertools.permutations(numeric_values, 3):
+            if quantity_hint is not None and quantity != quantity_hint:
+                continue
+            tolerance = max(Decimal("1.00"), total * Decimal("0.01"))
+            if abs((quantity * rate) - total) <= tolerance:
+                match = (quantity, rate, total)
+                break
+        if not match or not description_candidates:
+            return []
+
+        description = max(description_candidates, key=len)
+        source = SourceReference(
+            document_id=document_id,
+            page_number=region.page_number,
+            region_id=region.id,
+            bbox=[region.bbox.x1, region.bbox.y1, region.bbox.x2, region.bbox.y2],
+            polygon=region.polygon or [],
+            original_text=region.clean_content or "",
+        )
+        quantity, rate, total = match
+        return [
+            InvoiceLineItem(
+                line_number=start_line_num,
+                description=description,
+                quantity=quantity,
+                unit_price=rate,
+                total=total,
+                confidence=min(region.confidence or 0.8, 0.75),
+                source=source,
+            )
+        ]
+
+    @staticmethod
+    def _extract_full_page_table_window(lines: List[str]) -> List[str]:
+        """Restrict plaintext parsing to the invoice's item table."""
+        start = None
+        for index, line in enumerate(lines):
+            lower = line.lower()
+            header_hits = sum(
+                keyword in lower
+                for keyword in ("description", "quantity", "rate", "amount")
+            )
+            if header_hits >= 2:
+                start = index + 1
+                break
+        if start is None:
+            return []
+
+        end = len(lines)
+        for index in range(start, len(lines)):
+            if re.match(r"^(?:sub\s*)?total\b|^grand\s+total\b", lines[index], re.I):
+                end = index
+                break
+        return lines[start:end]
+
     def _parse_plaintext_table(
         self, document_id: str, region: Region, lines: List[str], start_line_num: int
     ) -> List[InvoiceLineItem]:
@@ -176,14 +269,14 @@ class TableParser:
                 else:
                     non_numeric_tokens.insert(0, tok)
 
-            if amounts:
+            if len(amounts) >= 2:
                 amounts.reverse()
                 desc = " ".join(non_numeric_tokens).strip()
                 total = amounts[-1] if amounts else None
                 rate = amounts[-2] if len(amounts) >= 2 else None
                 qty = amounts[0] if len(amounts) == 3 else None
 
-                if desc or total is not None:
+                if desc and re.search(r"[A-Za-z]", desc):
                     items.append(
                         InvoiceLineItem(
                             line_number=start_line_num + len(items),

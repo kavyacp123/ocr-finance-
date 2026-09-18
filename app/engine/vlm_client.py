@@ -336,8 +336,8 @@ class LocalOCRClient(OCRInferenceClient):
         try:
             import numpy as np
             page_np = np.array(page_image.convert("RGB"))
-            results = self.reader.readtext(page_np, detail=0)
-            text = "\n".join(results).strip()
+            results = self.reader.readtext(page_np, detail=1)
+            text = self._reconstruct_reading_order(results)
             duration_ms = (time.time() - start_time) * 1000.0
             return FullPageOCRResult(
                 status="success",
@@ -352,8 +352,57 @@ class LocalOCRClient(OCRInferenceClient):
                 processing_time_ms=round(duration_ms, 2),
             )
 
+    @staticmethod
+    def _reconstruct_reading_order(results: list) -> str:
+        """Group EasyOCR boxes into visual rows before joining their text."""
+        items = []
+        for result in results:
+            if len(result) < 2 or not result[1]:
+                continue
+            box, text = result[0], str(result[1]).strip()
+            xs = [float(point[0]) for point in box]
+            ys = [float(point[1]) for point in box]
+            items.append({
+                "text": text,
+                "x": min(xs),
+                "y": (min(ys) + max(ys)) / 2.0,
+                "height": max(1.0, max(ys) - min(ys)),
+            })
+
+        items.sort(key=lambda item: (item["y"], item["x"]))
+        rows = []
+        for item in items:
+            if not rows:
+                rows.append([item])
+                continue
+            row = rows[-1]
+            row_y = sum(entry["y"] for entry in row) / len(row)
+            row_height = max(entry["height"] for entry in row)
+            tolerance = max(12.0, min(row_height, item["height"]) * 0.6)
+            if abs(item["y"] - row_y) <= tolerance:
+                row.append(item)
+            else:
+                rows.append([item])
+
+        lines = []
+        for row in rows:
+            row.sort(key=lambda item: item["x"])
+            lines.append(" ".join(item["text"] for item in row))
+        return "\n".join(lines).strip()
+
     async def close(self) -> None:
         pass
+
+
+def get_ocr_client_metadata(client: OCRInferenceClient) -> tuple[str, str]:
+    """Return the active inference engine and model names for API metadata."""
+    if isinstance(client, VLLMOCRClient):
+        return "vLLM", client.model_name
+    if isinstance(client, LocalOCRClient):
+        return "EasyOCR", "EasyOCR English"
+    if isinstance(client, MockOCRClient):
+        return "MockEngine", "Mock OCR"
+    return type(client).__name__, settings.VLLM_MODEL
 
 
 def get_ocr_client() -> OCRInferenceClient:

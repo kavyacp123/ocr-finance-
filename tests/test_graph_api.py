@@ -104,7 +104,7 @@ def test_graph_api_endpoints(client):
     assert stats["total_edges"] >= 3
 
     # 3. GET /graph/trace/{invoice_id}
-    res_trace = client.get(f"/graph/trace/inv_gapi_1?depth=2")
+    res_trace = client.get(f"/graph/trace/inv_gapi_1?depth=2&organization_id={org_id}")
     assert res_trace.status_code == 200
     trace = res_trace.json()
     node_ids = {n["id"] for n in trace["nodes"]}
@@ -113,7 +113,7 @@ def test_graph_api_endpoints(client):
     assert "ven_gapi_1" in node_ids
 
     # 4. GET /graph/vendor/{vendor_id}/network
-    res_vnet = client.get(f"/graph/vendor/ven_gapi_1/network?depth=2")
+    res_vnet = client.get(f"/graph/vendor/ven_gapi_1/network?depth=2&organization_id={org_id}")
     assert res_vnet.status_code == 200
     vnet = res_vnet.json()
     vnet_node_ids = {n["id"] for n in vnet["nodes"]}
@@ -121,7 +121,9 @@ def test_graph_api_endpoints(client):
     assert "inv_gapi_1" in vnet_node_ids
 
     # 5. GET /graph/shared-entities
-    res_shared = client.get("/graph/shared-entities?target_type=BankAccount&min_connections=2")
+    res_shared = client.get(
+        f"/graph/shared-entities?target_type=BankAccount&min_connections=2&organization_id={org_id}"
+    )
     assert res_shared.status_code == 200
     shared = res_shared.json()
     assert shared["total_shared_entities"] >= 1

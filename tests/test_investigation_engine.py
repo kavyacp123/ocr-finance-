@@ -177,3 +177,16 @@ async def test_investigation_engine_end_to_end(engine_db):
     # Confidence should be high
     assert report.confidence >= 0.8
     assert len(report.findings) >= 2
+
+
+@pytest.mark.asyncio
+async def test_investigation_reports_missing_period_data(engine_db):
+    _, org_id, _ = engine_db
+    report = await FinanceInvestigationEngine().investigate(
+        question="Why did AWS spending increase in August 2025?",
+        organization_id=org_id,
+    )
+
+    assert report.target.invoice_count == 0
+    assert report.confidence == 0.25
+    assert any("none could be included in the target period" in item for item in report.limitations)

@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     VECTOR_INDEX_PATH: str = "./outputs/vector_index.json"
 
     # FINANCE COPILOT SETTINGS (PHASE 6)
-    COPILOT_LLM_BACKEND: str = "mock"
+    COPILOT_LLM_BACKEND: str = "deterministic"
     COPILOT_LLM_BASE_URL: str = "http://localhost:8000/v1"
     COPILOT_LLM_MODEL: str = "gpt-4o"
     COPILOT_MAX_CONTEXT_RESULTS: int = 10

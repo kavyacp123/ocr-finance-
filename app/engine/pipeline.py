@@ -20,7 +20,7 @@ from app.models import (
 from app.engine.document_loader import DocumentLoader
 from app.engine.layout_detector import LayoutDetector
 from app.engine.cropper import RegionCropper
-from app.engine.vlm_client import OCRInferenceClient, get_ocr_client
+from app.engine.vlm_client import OCRInferenceClient, get_ocr_client, get_ocr_client_metadata
 from app.engine.coverage_analyzer import CoverageAnalyzer
 from app.engine.deduplication import DeduplicationAnalyzer
 from app.engine.postprocessor import Postprocessor
@@ -233,6 +233,7 @@ class OCREngine:
             avg_region_latency_ms=round(avg_region_latency, 2),
         )
 
+        inference_engine, ocr_model = get_ocr_client_metadata(self.vlm_client)
         doc_result = DocumentResult(
             document_id=doc_id,
             filename=filename,
@@ -240,8 +241,8 @@ class OCREngine:
             processing_time_ms=round(total_doc_ms, 2),
             engine=EngineMetadata(
                 layout_model=settings.LAYOUT_MODEL,
-                ocr_model=settings.VLLM_MODEL,
-                inference_engine="vLLM" if not settings.OCR_MOCK_MODE else "MockEngine"
+                ocr_model=ocr_model,
+                inference_engine=inference_engine,
             ),
             pages=page_results,
             markdown=final_markdown,

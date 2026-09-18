@@ -242,6 +242,28 @@ class FinanceInvestigationEngine:
                 if lines_res.success and lines_res.data:
                     context.target_line_items = lines_res.data.get("line_items", [])
 
+        if context.vendor_id and not context.target_invoice_ids:
+            count_res = await self.sql_tool.execute(
+                step_id="target_vendor_invoice_count",
+                operation=ToolOperation.GET_VENDOR_INVOICE_COUNT,
+                arguments={"vendor_id": context.vendor_id},
+                organization_id=context.organization_id,
+            )
+            total_vendor_invoices = (
+                count_res.data.get("invoice_count", 0)
+                if count_res.success and count_res.data
+                else 0
+            )
+            if total_vendor_invoices:
+                context.limitations.append(
+                    f"{total_vendor_invoices} invoice(s) exist for {context.vendor_name or 'the vendor'}, "
+                    "but none could be included in the target period. Missing or out-of-range invoice dates may affect this result."
+                )
+            else:
+                context.limitations.append(
+                    f"No invoices were available for {context.vendor_name or 'the vendor'} in the target period."
+                )
+
     def _run_comparison(self, context: InvestigationContext) -> None:
         InvestigationStateMachine.transition(context.current_state, InvestigationState.COMPARING, context.step_count)
         delta_info = SpendDeltaAnalyzer.analyze(context)
@@ -304,6 +326,7 @@ class FinanceInvestigationEngine:
 
     async def _run_relationship_check(self, context: InvestigationContext) -> None:
         InvestigationStateMachine.transition(context.current_state, InvestigationState.CHECKING_RELATIONSHIPS, context.step_count)
+        graph_node_count = 0
         if context.vendor_id:
             res = await self.graph_tool.execute(
                 step_id="graph_check",
@@ -313,7 +336,13 @@ class FinanceInvestigationEngine:
             )
             if res.success and res.data:
                 context.evidence.extend(res.evidence)
-        context.record_step(InvestigationState.CHECKING_RELATIONSHIPS, {"graph_traced": bool(context.vendor_id)})
+                graph_node_count = len(res.data.get("nodes", []))
+                if graph_node_count == 0:
+                    context.limitations.append("No knowledge-graph relationships were found for the resolved vendor.")
+        context.record_step(
+            InvestigationState.CHECKING_RELATIONSHIPS,
+            {"graph_traced": bool(context.vendor_id), "graph_node_count": graph_node_count},
+        )
 
     async def _run_vector_evidence_collection(self, context: InvestigationContext) -> None:
         InvestigationStateMachine.transition(context.current_state, InvestigationState.COLLECTING_EVIDENCE, context.step_count)

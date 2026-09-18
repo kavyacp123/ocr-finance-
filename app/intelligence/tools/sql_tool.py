@@ -264,7 +264,7 @@ class FinanceSQLTool(BaseFinanceTool):
         vendor_id = args.get("vendor_id")
         q = db.query(InvoiceModel).filter(
             InvoiceModel.organization_id == org_id,
-            InvoiceModel.payment_status.in_(["UNPAID", "PENDING", "PARTIALLY_PAID"]),
+            func.lower(InvoiceModel.payment_status).in_(["unpaid", "pending", "partially_paid"]),
         )
         if vendor_id:
             q = q.filter(InvoiceModel.vendor_id == vendor_id)
@@ -277,7 +277,7 @@ class FinanceSQLTool(BaseFinanceTool):
                 "invoice_id": inv.id,
                 "invoice_number": inv.invoice_number,
                 "vendor_name": inv.vendor_name_raw or inv.vendor_name_normalized,
-                "total_amount": str(inv.total_amount),
+                "total_amount": str(inv.total_amount) if inv.total_amount is not None else None,
                 "due_date": inv.due_date.isoformat() if inv.due_date else None,
                 "payment_status": inv.payment_status,
             })
@@ -314,7 +314,7 @@ class FinanceSQLTool(BaseFinanceTool):
 
         q = db.query(InvoiceModel).filter(
             InvoiceModel.organization_id == org_id,
-            InvoiceModel.payment_status.in_(["UNPAID", "PENDING", "PARTIALLY_PAID"]),
+            func.lower(InvoiceModel.payment_status).in_(["unpaid", "pending", "partially_paid"]),
             InvoiceModel.due_date < as_of,
         )
         invoices = q.order_by(InvoiceModel.due_date.asc()).limit(100).all()

@@ -1,4 +1,6 @@
 import threading
+import json
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 import numpy as np
 
@@ -13,13 +15,19 @@ class VectorStore:
     metadata filtering, and cosine similarity nearest-neighbor retrieval.
     """
 
-    def __init__(self, embedder: Optional[BaseEmbeddingProvider] = None):
+    def __init__(
+        self,
+        embedder: Optional[BaseEmbeddingProvider] = None,
+        persist_path: Optional[str] = None,
+    ):
         self.embedder = embedder or get_embedding_provider()
+        self.persist_path = Path(persist_path) if persist_path else None
         self._chunks: Dict[str, VectorChunk] = {}
         self._embeddings: List[np.ndarray] = []
         self._chunk_ids: List[str] = []
         self._matrix: Optional[np.ndarray] = None
         self._lock = threading.RLock()
+        self._load()
 
     def add_chunks(self, chunks: List[VectorChunk]) -> int:
         if not chunks:
@@ -53,6 +61,7 @@ class VectorStore:
                 self._matrix = None
 
             logger.info(f"VECTOR_STORE: Indexed {len(new_chunks)} chunks (Total: {len(self._chunks)}).")
+            self._persist()
             return len(new_chunks)
 
     def search(
@@ -168,3 +177,38 @@ class VectorStore:
             self._embeddings.clear()
             self._chunk_ids.clear()
             self._matrix = None
+            self._persist()
+
+    def _load(self) -> None:
+        if not self.persist_path or not self.persist_path.exists():
+            return
+        try:
+            payload = json.loads(self.persist_path.read_text(encoding="utf-8"))
+            chunks = [VectorChunk.model_validate(item) for item in payload.get("chunks", [])]
+            if not chunks:
+                return
+            vectors = self.embedder.embed_texts([chunk.text for chunk in chunks])
+            for index, chunk in enumerate(chunks):
+                self._chunks[chunk.chunk_id] = chunk
+                self._chunk_ids.append(chunk.chunk_id)
+                self._embeddings.append(vectors[index])
+            self._matrix = np.vstack(self._embeddings)
+            logger.info(
+                f"VECTOR_STORE: Restored {len(chunks)} persisted chunks from {self.persist_path}."
+            )
+        except Exception as exc:
+            logger.warning(f"VECTOR_STORE: Could not restore {self.persist_path}: {exc}")
+
+    def _persist(self) -> None:
+        if not self.persist_path:
+            return
+        try:
+            self.persist_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = self.persist_path.with_suffix(self.persist_path.suffix + ".tmp")
+            payload = {
+                "chunks": [chunk.model_dump(mode="json") for chunk in self._chunks.values()]
+            }
+            temp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            temp_path.replace(self.persist_path)
+        except Exception as exc:
+            logger.warning(f"VECTOR_STORE: Could not persist {self.persist_path}: {exc}")

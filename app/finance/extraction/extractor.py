@@ -115,6 +115,7 @@ class FinanceExtractor:
 
         # ── Step 1: Same-Region Extraction ───────────────────────────────────
         same_extracted = self.same_region.extract_from_regions(doc_id, all_regions)
+        self._apply_full_page_overrides(doc_id, all_regions, same_extracted)
 
         # ── Step 2: Spatial Neighbor Extraction ──────────────────────────────
         # Search for any fields not yet extracted in Step 1
@@ -417,42 +418,39 @@ class FinanceExtractor:
 
         vendor_found = False
 
-        # Strategy 1: For synthetic full-page regions, parse line-by-line
+        # Strategy 1: For synthetic full-page regions, score header lines.
         for r in working_regions:
             if r.id.endswith("_fullpage") and r.clean_content:
                 lines = [l.strip() for l in r.clean_content.split("\n") if l.strip()]
-                for line in lines:
-                    # Skip title/header lines
-                    if _title_skip.match(line):
-                        continue
-                    # Skip lines that look like field labels with values
-                    if re.match(r"^(invoice|date|gstin|gst|bill\s*to|total|grand|sub|tax|bank|ifsc|account)\s*", line, re.I):
-                        continue
-                    # First substantial non-title line is likely the vendor name
-                    if len(line) >= 3:
-                        raw_legal, norm_name = normalize_vendor_name(line)
-                        invoice.vendor_name_raw = ExtractedField(
-                            name="vendor_name_raw",
-                            value=raw_legal,
-                            raw_value=line,
-                            origin=ValueOrigin.EXTRACTED,
-                            confidence=r.confidence or 0.75,
-                            source=SourceReference(
-                                document_id=doc_id,
-                                page_number=r.page_number,
-                                region_id=r.id,
-                                bbox=[r.bbox.x1, r.bbox.y1, r.bbox.x2, r.bbox.y2],
-                                polygon=r.polygon or [],
-                                original_text=line,
-                            ),
-                            extraction=ExtractionDetails(
-                                method="full_page_first_line_heuristic",
-                                confidence=r.confidence or 0.75,
-                            ),
-                        )
-                        invoice.vendor_name_normalized = norm_name
-                        vendor_found = True
-                        break
+                invoice_heading = next(
+                    (index for index, line in enumerate(lines) if re.search(r"\btax\s+invoice\b", line, re.I)),
+                    min(len(lines), 12),
+                )
+                header_lines = lines[:invoice_heading]
+                ranked = sorted(
+                    (
+                        (self._vendor_line_score(self._party_name_prefix(line), _title_skip), self._party_name_prefix(line))
+                        for line in header_lines
+                    ),
+                    reverse=True,
+                )
+                if ranked and ranked[0][0] > 0:
+                    line = ranked[0][1]
+                    raw_legal, norm_name = normalize_vendor_name(line)
+                    invoice.vendor_name_raw = ExtractedField(
+                        name="vendor_name_raw",
+                        value=raw_legal,
+                        raw_value=line,
+                        origin=ValueOrigin.EXTRACTED,
+                        confidence=max(r.confidence or 0.75, 0.85),
+                        source=self._source_for_region(doc_id, r, line),
+                        extraction=ExtractionDetails(
+                            method="full_page_header_name_scoring",
+                            confidence=max(r.confidence or 0.75, 0.85),
+                        ),
+                    )
+                    invoice.vendor_name_normalized = norm_name
+                    vendor_found = True
                 if vendor_found:
                     break
 
@@ -497,11 +495,23 @@ class FinanceExtractor:
         for i, reg in enumerate(working_regions):
             text = (reg.clean_content or "").strip()
             if re.search(r"\b(bill\s*to|billed\s*to|customer|buyer)\b", text, re.I):
-                # Check if buyer name is inside the same region
                 lines = [l.strip() for l in text.split("\n") if l.strip()]
                 buyer_raw = None
-                if len(lines) > 1:
-                    buyer_raw = lines[1]
+                label_index = next(
+                    (idx for idx, line in enumerate(lines) if re.search(r"\b(bill\s*to|billed\s*to|customer|buyer)\b", line, re.I)),
+                    None,
+                )
+                if label_index is not None:
+                    candidates = lines[label_index + 1 : label_index + 10]
+                    buyer_raw = next(
+                        (
+                            candidate
+                            for line in candidates
+                            if (candidate := self._party_name_prefix(line))
+                            and self._is_plausible_party_name(candidate)
+                        ),
+                        None,
+                    )
                 elif i + 1 < len(working_regions):
                     # Check next adjacent region
                     next_reg = working_regions[i + 1]
@@ -531,3 +541,125 @@ class FinanceExtractor:
                     )
                     invoice.buyer_name_normalized = b_norm
                 break
+
+    def _apply_full_page_overrides(
+        self,
+        document_id: str,
+        regions: List[Region],
+        extracted: Dict[str, Tuple[str, SourceReference]],
+    ) -> None:
+        """Prefer explicit full-page labels when OCR provides row-ordered text."""
+        full_page = next((region for region in regions if region.id.endswith("_fullpage")), None)
+        if not full_page or not full_page.clean_content:
+            return
+
+        text = full_page.clean_content
+        source = self._source_for_region(document_id, full_page, text)
+
+        grand_total = re.search(
+            r"\bgrand\s+total\b[^0-9₹$€£]{0,15}([₹$€£]?\s*[0-9][0-9,]*(?:\.[0-9]{1,2})?)",
+            text,
+            re.I,
+        )
+        if grand_total:
+            extracted["total_amount"] = (grand_total.group(1).strip(), source)
+
+        subtotal_match = re.search(
+            r"(?m)^total\b[^0-9₹$€£]{0,15}([₹$€£]?\s*[0-9][0-9,]*(?:\.[0-9]{1,2})?)",
+            text,
+            re.I,
+        )
+        if grand_total and subtotal_match:
+            extracted["subtotal"] = (subtotal_match.group(1).strip(), source)
+
+        tax_values = []
+        for line in text.splitlines():
+            if re.search(r"\b(?:cgst|sgst|igst)\b", line, re.I):
+                amounts = re.findall(r"[0-9][0-9,]*\.\d{2}", line)
+                if amounts:
+                    amount = normalize_amount(amounts[-1])
+                    if amount is not None:
+                        tax_values.append(amount)
+        if tax_values:
+            extracted["tax_amount"] = (str(sum(tax_values).quantize(Decimal("0.01"))), source)
+
+        if "invoice_date" not in extracted:
+            date_match = re.search(r"\b(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\b", text)
+            if date_match:
+                extracted["invoice_date"] = (date_match.group(1), source)
+
+        invoice_match = re.search(
+            r"\binvoice\s*(?:no|number|#)\.?\s*[:#-]?\s*([A-Z0-9][A-Z0-9/_-]{0,30})\b",
+            text,
+            re.I,
+        )
+        if invoice_match and invoice_match.group(1).lower() not in {
+            "bill", "date", "challan", "original", "tax"
+        }:
+            extracted["invoice_number"] = (invoice_match.group(1), source)
+
+    @staticmethod
+    def _source_for_region(document_id: str, region: Region, original_text: str) -> SourceReference:
+        return SourceReference(
+            document_id=document_id,
+            page_number=region.page_number,
+            region_id=region.id,
+            bbox=[region.bbox.x1, region.bbox.y1, region.bbox.x2, region.bbox.y2],
+            polygon=region.polygon or [],
+            original_text=original_text,
+        )
+
+    @staticmethod
+    def _vendor_line_score(line: str, title_skip: re.Pattern) -> float:
+        cleaned = line.strip()
+        lower = cleaned.lower()
+        if len(cleaned) < 4 or title_skip.match(cleaned):
+            return -10.0
+        if re.search(r"@|\b(?:mobile|phone|email|e-mail|gstin|date|recipient)\b", lower):
+            return -10.0
+        if re.fullmatch(r"(?:hari\s+om|shree\s+ganesh|om|original\s+for\s+recipient)", lower):
+            return -10.0
+        if re.search(r"\d{4,}|[/,:]", cleaned):
+            return -5.0
+
+        words = re.findall(r"[A-Za-z]+", cleaned)
+        score = min(len(words), 5)
+        if len(words) >= 2:
+            score += 2.0
+        if cleaned.upper() == cleaned:
+            score += 2.0
+        if re.search(r"\b(?:enterprises|industries|limited|ltd|company|corp|services|solutions)\b", lower):
+            score += 4.0
+        return score
+
+    @staticmethod
+    def _is_plausible_party_name(line: str) -> bool:
+        cleaned = line.strip()
+        lower = cleaned.lower()
+        if len(cleaned) < 4 or not re.search(r"[A-Za-z]", cleaned):
+            return False
+        if re.search(
+            r"\b(?:invoice|date|challan|l\.?r\.?|dispatch|gstin|state\s+code|order\s+no|bill\s+to)\b",
+            lower,
+        ):
+            return False
+        if re.search(r"@|\bmobile\b|\bphone\b", lower):
+            return False
+        return cleaned.upper() == cleaned or bool(
+            re.search(r"\b(?:enterprises|industries|limited|ltd|company|corp|services|solutions)\b", lower)
+        )
+
+    @staticmethod
+    def _party_name_prefix(line: str) -> str:
+        prefix = re.split(
+            r"\b(?:mobile|phone|invoice\s*(?:no|number|#)|challan\s*no|date|gstin|state\s+code)\b",
+            line,
+            maxsplit=1,
+            flags=re.I,
+        )[0].strip(" :-|,")
+        legal_name = re.match(
+            r"^(.+?\b(?:enterprises|industries|limited|ltd\.?|company|corp\.?|services|solutions))\b",
+            prefix,
+            re.I,
+        )
+        return legal_name.group(1).strip() if legal_name else prefix

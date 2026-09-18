@@ -25,6 +25,9 @@ def test_health_check_endpoint(client):
     data = resp.json()
     assert data["status"] in ("ok", "degraded")
     assert "layout_engine" in data
+    assert data["inference_engine"] == "MockEngine"
+    assert data["engine_reachable"] is True
+    assert data["vllm_reachable"] is False
 
 
 def test_config_endpoint(client):

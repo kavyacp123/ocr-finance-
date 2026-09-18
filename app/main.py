@@ -43,8 +43,25 @@ async def lifespan(app: FastAPI):
     app.state.graph_adapter = graph_adapter
     app.state.graph_sync = GraphSyncService(graph_adapter)
 
+    from app.database.session import SessionLocal
+    from app.database.models import InvoiceModel, PaymentModel, PurchaseOrderModel, VendorModel
+
+    graph_db = SessionLocal()
+    try:
+        organization_ids = set()
+        for model in (VendorModel, PurchaseOrderModel, InvoiceModel, PaymentModel):
+            organization_ids.update(
+                org_id for (org_id,) in graph_db.query(model.organization_id).distinct().all() if org_id
+            )
+        for organization_id in organization_ids:
+            app.state.graph_sync.sync_all(organization_id=organization_id, db=graph_db)
+        if organization_ids:
+            logger.info(f"GRAPH_STARTUP: Restored {len(organization_ids)} organization graph(s) from the database.")
+    finally:
+        graph_db.close()
+
     app.state.chunker = DocumentChunker()
-    app.state.vector_store = VectorStore()
+    app.state.vector_store = VectorStore(persist_path=settings.VECTOR_INDEX_PATH)
 
     from app.intelligence.copilot import FinanceCopilotService
     from app.investigations.engine import FinanceInvestigationEngine
@@ -53,7 +70,6 @@ async def lifespan(app: FastAPI):
     from app.intelligence.tools.vector_tool import FinanceVectorTool
     from app.intelligence.tools.rules_tool import FinanceRulesTool
     from app.intelligence.tools.anomaly_tool import FinanceAnomalyTool
-    from app.database.session import SessionLocal
 
     app.state.copilot = FinanceCopilotService.create_default(
         graph_adapter=graph_adapter,
