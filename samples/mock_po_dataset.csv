@@ -1,0 +1,6 @@
+po_number,vendor_name,total_amount,po_date,notes
+PO-101,HARI OM,50000,2026-01-02,base purchase order
+PO-102,HARI OM,52000,2026-01-15,base purchase order
+PO-201,ABC Supplies,48000,2026-01-10,base purchase order
+PO-401,HARI OM,70000,2026-02-08,normal PO for anomaly check
+PO-999,ABC Supplies,45000,2026-02-01,stale or invalid PO reference

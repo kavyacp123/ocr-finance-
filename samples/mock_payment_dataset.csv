@@ -1,0 +1,4 @@
+payment_reference,vendor_name,invoice_number,amount,payment_date,notes
+PMT-201,ABC Supplies,INV-2001,50000,2026-02-01,overpayment vs invoice total 45000
+PMT-202,ABC Supplies,INV-2002,47000,2026-02-03,slightly over payment
+PMT-203,HARI OM,INV-1006,20000,2026-02-05,partial payment example

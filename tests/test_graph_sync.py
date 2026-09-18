@@ -11,6 +11,7 @@ from app.database.models import (
 )
 from app.finance.graph.memory_adapter import NetworkXGraphAdapter
 from app.finance.graph.sync_service import GraphSyncService
+from samples.mock_finance_seed import seed_data
 
 
 @pytest.fixture
@@ -124,3 +125,24 @@ def test_graph_sync_service_full_sync(db):
     assert "REFERENCES_PO" in stats.edges_by_type
     assert "APPLIED_TO" in stats.edges_by_type
     assert "USES_BANK_ACCOUNT" in stats.edges_by_type
+
+
+def test_mock_finance_seed_persists_graph_ready_relations(db):
+    org_id = "org_default"
+
+    for m in (DocumentLinkModel, PaymentModel, InvoiceModel, PurchaseOrderModel, VendorModel, DocumentModel):
+        db.query(m).filter(m.organization_id == org_id).delete(synchronize_session=False)
+    db.commit()
+
+    seed_data()
+
+    assert db.query(VendorModel).filter(VendorModel.organization_id == org_id).count() >= 3
+    assert db.query(InvoiceModel).filter(
+        InvoiceModel.organization_id == org_id,
+        InvoiceModel.vendor_id.isnot(None),
+    ).count() >= 8
+    assert db.query(PurchaseOrderModel).filter(
+        PurchaseOrderModel.organization_id == org_id,
+        PurchaseOrderModel.vendor_id.isnot(None),
+    ).count() >= 4
+    assert db.query(DocumentLinkModel).filter(DocumentLinkModel.organization_id == org_id).count() >= 4

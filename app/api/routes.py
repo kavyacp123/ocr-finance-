@@ -1176,6 +1176,13 @@ async def graph_stats_endpoint(
     """
     if not hasattr(request.app.state, "graph_adapter"):
         raise HTTPException(status_code=503, detail="Graph engine is not initialized.")
+    from app.database.session import SessionLocal
+
+    graph_db = SessionLocal()
+    try:
+        request.app.state.graph_sync.sync_all(organization_id=organization_id, db=graph_db)
+    finally:
+        graph_db.close()
     adapter = request.app.state.graph_adapter
     stats = adapter.get_stats(organization_id=organization_id)
     return stats.model_dump()
@@ -1193,6 +1200,13 @@ async def graph_trace_invoice_endpoint(
     """
     if not hasattr(request.app.state, "graph_adapter"):
         raise HTTPException(status_code=503, detail="Graph engine is not initialized.")
+    from app.database.session import SessionLocal
+
+    graph_db = SessionLocal()
+    try:
+        request.app.state.graph_sync.sync_all(organization_id=organization_id, db=graph_db)
+    finally:
+        graph_db.close()
     adapter = request.app.state.graph_adapter
     root = adapter.get_node(invoice_id)
     if not root or root.properties.get("organization_id") != organization_id:
@@ -1213,6 +1227,13 @@ async def graph_vendor_network_endpoint(
     """
     if not hasattr(request.app.state, "graph_adapter"):
         raise HTTPException(status_code=503, detail="Graph engine is not initialized.")
+    from app.database.session import SessionLocal
+
+    graph_db = SessionLocal()
+    try:
+        request.app.state.graph_sync.sync_all(organization_id=organization_id, db=graph_db)
+    finally:
+        graph_db.close()
     adapter = request.app.state.graph_adapter
     root = adapter.get_node(vendor_id)
     if not root or root.properties.get("organization_id") != organization_id:
