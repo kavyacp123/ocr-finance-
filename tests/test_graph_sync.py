@@ -11,7 +11,7 @@ from app.database.models import (
 )
 from app.finance.graph.memory_adapter import NetworkXGraphAdapter
 from app.finance.graph.sync_service import GraphSyncService
-from samples.mock_finance_seed import seed_data
+from scripts.seed_demo_data import seed as seed_data
 
 
 @pytest.fixture

@@ -15,7 +15,7 @@ def test_frontend_static_serving():
         # Check index.html
         res_index = client.get("/ui/")
         assert res_index.status_code == 200
-        assert "Finance Document Intelligence" in res_index.text
+        assert "Finance Intelligence" in res_index.text
         assert "tab-dashboard" in res_index.text
         assert "tab-copilot" in res_index.text
         assert "tab-investigate" in res_index.text
@@ -23,7 +23,7 @@ def test_frontend_static_serving():
         # Check style.css
         res_css = client.get("/ui/style.css")
         assert res_css.status_code == 200
-        assert "glass-card" in res_css.text
+        assert "--surface" in res_css.text
 
         # Check app.js
         res_js = client.get("/ui/app.js")

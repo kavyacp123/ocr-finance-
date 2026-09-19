@@ -20,7 +20,7 @@ def test_load_image_sample(tmp_path):
 
 
 def test_unsupported_file_extension(tmp_path):
-    txt_path = tmp_path / "test.txt"
+    txt_path = tmp_path / "test.unsupported"
     txt_path.write_text("hello world")
 
     loader = DocumentLoader()
