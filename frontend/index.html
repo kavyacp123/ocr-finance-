@@ -81,8 +81,8 @@
             <section class="panel ingest-control">
               <div class="step-label"><span>01</span><div><strong>Choose document type</strong><small>Controls the extraction schema</small></div></div>
               <div class="segmented-control"><button id="docTypeInvoice" class="segment active" type="button"><i data-lucide="receipt-text"></i>Invoice</button><button id="docTypePO" class="segment" type="button"><i data-lucide="clipboard-list"></i>Purchase order</button></div>
-              <div class="step-label"><span>02</span><div><strong>Select a source file</strong><small>PDF, PNG or JPEG</small></div></div>
-              <div id="dropzone" class="dropzone" role="button" tabindex="0"><input type="file" id="fileInput" class="hidden" accept=".pdf,.png,.jpg,.jpeg"><div class="upload-icon"><i data-lucide="file-up"></i></div><strong>Drop a finance document here</strong><p>or click to choose a file from this computer</p><span id="selectedFileName" class="file-chip hidden"></span></div>
+              <div class="step-label"><span>02</span><div><strong>Select a source file</strong><small>PDF, image, CSV, XLSX, DOCX or TXT</small></div></div>
+              <div id="dropzone" class="dropzone" role="button" tabindex="0"><input type="file" id="fileInput" class="hidden" accept=".pdf,.png,.jpg,.jpeg,.bmp,.tif,.tiff,.webp,.csv,.txt,.xlsx,.docx"><div class="upload-icon"><i data-lucide="file-up"></i></div><strong>Drop a finance document here</strong><p>or click to choose a file from this computer</p><span id="selectedFileName" class="file-chip hidden"></span></div>
               <div class="persist-note"><i data-lucide="database-zap"></i><div><strong>Automatic persistence</strong><span>Canonical records, searchable evidence and graph relationships are saved after extraction.</span></div></div>
               <button id="uploadBtn" class="btn btn-primary btn-block" type="button"><i data-lucide="scan-text"></i><span>Extract and store</span></button>
             </section>

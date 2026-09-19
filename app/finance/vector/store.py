@@ -36,12 +36,17 @@ class VectorStore:
         with self._lock:
             # Filter out chunks already present or replace them
             new_chunks = []
+            seen_chunk_ids = set()
             for c in chunks:
+                if c.chunk_id in seen_chunk_ids:
+                    continue
+                seen_chunk_ids.add(c.chunk_id)
                 if c.chunk_id in self._chunks:
                     # Remove existing entry to update cleanly
-                    idx = self._chunk_ids.index(c.chunk_id)
-                    del self._chunk_ids[idx]
-                    del self._embeddings[idx]
+                    if c.chunk_id in self._chunk_ids:
+                        idx = self._chunk_ids.index(c.chunk_id)
+                        del self._chunk_ids[idx]
+                        del self._embeddings[idx]
                 self._chunks[c.chunk_id] = c
                 new_chunks.append(c)
 

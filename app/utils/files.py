@@ -5,7 +5,10 @@ from typing import Tuple, List, Optional
 from PIL import Image
 
 
-SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
+SUPPORTED_EXTENSIONS = {
+    ".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp",
+    ".csv", ".txt", ".xlsx", ".docx",
+}
 
 
 class UnsupportedDocumentError(Exception):

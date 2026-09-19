@@ -42,13 +42,13 @@ class TableParser:
             if not lines:
                 continue
 
-            if t_reg.id.endswith("_fullpage") and not any("|" in line for line in lines):
+            if t_reg.id.endswith("_fullpage") and not any(line.count("|") >= 2 for line in lines):
                 lines = self._extract_full_page_table_window(lines)
                 if not lines:
                     continue
 
             # ── Check if Markdown Pipe Table ─────────────────────────────────
-            if any("|" in l for l in lines):
+            if any(l.count("|") >= 2 for l in lines):
                 items = self._parse_pipe_table(document_id, t_reg, lines, start_line_num=line_num)
                 line_items.extend(items)
                 line_num += len(items)
@@ -160,6 +160,8 @@ class TableParser:
         quantity_hint: Optional[Decimal] = None
         numeric_pattern = r"(?<![A-Za-z0-9])[0-9][0-9,]*(?:\.[0-9]+)?(?![A-Za-z0-9])"
         for line in lines:
+            if re.search(r"\b(?:gstin|state\s+code|company['’]?s|bank|ifsc|total|cgst|sgst|rupees|only)\b", line, re.I):
+                continue
             quantity_match = re.search(rf"\bNo\s+({numeric_pattern})\s+No\b", line, re.I)
             if quantity_match:
                 quantity_hint = normalize_amount(quantity_match.group(1))
@@ -215,14 +217,35 @@ class TableParser:
     def _extract_full_page_table_window(lines: List[str]) -> List[str]:
         """Restrict plaintext parsing to the invoice's item table."""
         start = None
-        for index, line in enumerate(lines):
-            lower = line.lower()
+        header_start = None
+        header_end = None
+        description_index = next(
+            (
+                index
+                for index, line in enumerate(lines)
+                if re.search(r"\b(?:description|particulars|item\s+name)\b", line, re.I)
+            ),
+            None,
+        )
+        candidate_indexes = [description_index] if description_index is not None else range(len(lines))
+        for index in candidate_indexes:
+            line = lines[index]
+            window = " ".join(lines[index:min(index + 8, len(lines))]).lower()
             header_hits = sum(
-                keyword in lower
+                keyword in window
                 for keyword in ("description", "quantity", "rate", "amount")
             )
-            if header_hits >= 2:
-                start = index + 1
+            if description_index is not None or header_hits >= 3:
+                header_start = index
+                header_end = next(
+                    (
+                        candidate
+                        for candidate in range(index, min(index + 8, len(lines)))
+                        if "amount" in lines[candidate].lower()
+                    ),
+                    index,
+                )
+                start = header_start
                 break
         if start is None:
             return []
@@ -250,6 +273,8 @@ class TableParser:
         for line in lines:
             # Skip lines that are just headers
             if any(k in line.lower() for k in ["description", "particulars", "sl no", "item name"]):
+                continue
+            if re.search(r"\b(?:gstin|state\s+code|company['’]?s|bank|ifsc|total|cgst|sgst)\b", line, re.I):
                 continue
 
             # Regex: match description followed by 1 or more amounts at the end of line

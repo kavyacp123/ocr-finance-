@@ -19,6 +19,9 @@ dependencies = [
     "openai>=1.14.0",
     "opencv-python-headless>=4.9.0",
     "python-multipart>=0.0.9",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-google-genai>=2.0.0",
 ]
 
 [tool.pytest.ini_options]

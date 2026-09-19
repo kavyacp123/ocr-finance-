@@ -44,6 +44,7 @@ from app.intelligence.tools.vector_tool import FinanceVectorTool
 from app.intelligence.tools.analytics_tool import FinanceAnalyticsTool
 from app.intelligence.tools.rules_tool import FinanceRulesTool
 from app.intelligence.tools.anomaly_tool import FinanceAnomalyTool
+from app.intelligence.langchain_narrator import LangChainNarrator
 from app.utils.logging import logger
 
 
@@ -56,12 +57,14 @@ class FinanceCopilotService:
         self,
         planner: Optional[QueryPlanner] = None,
         tools: Optional[Dict[ToolName, BaseFinanceTool]] = None,
+        narrator: Optional[LangChainNarrator] = None,
         session_factory=SessionLocal,
     ):
         self.session_factory = session_factory
         self.planner = planner or QueryPlanner()
         self.tools = tools or {}
         self.executor = QueryExecutor(self.tools)
+        self.narrator = narrator or LangChainNarrator()
 
     @classmethod
     def create_default(
@@ -70,6 +73,7 @@ class FinanceCopilotService:
         vector_store=None,
         rule_engine=None,
         anomaly_detector=None,
+        narrator: Optional[LangChainNarrator] = None,
         session_factory=SessionLocal,
     ) -> "FinanceCopilotService":
         """
@@ -83,7 +87,7 @@ class FinanceCopilotService:
             ToolName.RULES: FinanceRulesTool(session_factory=session_factory, rule_engine=rule_engine),
             ToolName.ANOMALY: FinanceAnomalyTool(session_factory=session_factory, anomaly_detector=anomaly_detector),
         }
-        return cls(tools=tools, session_factory=session_factory)
+        return cls(tools=tools, narrator=narrator, session_factory=session_factory)
 
     async def ask(
         self,
@@ -122,6 +126,16 @@ class FinanceCopilotService:
             tool_results=tool_results,
             evidence=evidence,
         )
+
+        narrated_answer = await self.narrator.narrate_copilot(
+            question=question,
+            plan=plan,
+            answer=answer,
+            tool_results=tool_results,
+            evidence=evidence,
+        )
+        if narrated_answer:
+            answer.answer = narrated_answer
 
         # 5. Update conversation context
         new_context = self._update_context(context or ConversationContext(), plan)

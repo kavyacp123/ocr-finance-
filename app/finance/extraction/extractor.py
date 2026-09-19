@@ -556,13 +556,20 @@ class FinanceExtractor:
         text = full_page.clean_content
         source = self._source_for_region(document_id, full_page, text)
 
-        grand_total = re.search(
-            r"\bgrand\s+total\b[^0-9₹$€£]{0,15}([₹$€£]?\s*[0-9][0-9,]*(?:\.[0-9]{1,2})?)",
-            text,
-            re.I,
-        )
-        if grand_total:
-            extracted["total_amount"] = (grand_total.group(1).strip(), source)
+        grand_total_label = re.search(r"\bgrand\s+total\b", text, re.I)
+        grand_total = None
+        if grand_total_label:
+            totals_block = text[grand_total_label.end():]
+            totals_block = re.split(
+                r"\b(?:e\.?\s*&\s*o\.?\s*e\.?|terms?\s+and\s+condition|bank|ifsc|a/c|account|received)\b",
+                totals_block,
+                maxsplit=1,
+                flags=re.I,
+            )[0]
+            amounts = re.findall(r"[₹$€£]?\s*[0-9][0-9,]*(?:\.[0-9]{1,2})?", totals_block)
+            if amounts:
+                grand_total = amounts[-1].strip()
+                extracted["total_amount"] = (grand_total, source)
 
         subtotal_match = re.search(
             r"(?m)^total\b[^0-9₹$€£]{0,15}([₹$€£]?\s*[0-9][0-9,]*(?:\.[0-9]{1,2})?)",
@@ -597,6 +604,25 @@ class FinanceExtractor:
             "bill", "date", "challan", "original", "tax"
         }:
             extracted["invoice_number"] = (invoice_match.group(1), source)
+
+        gstin_pattern = r"[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z][Z2][0-9A-Z]"
+
+        def normalize_ocr_gstin(value: str) -> str:
+            value = value.upper()
+            if len(value) == 15 and value[13] == "2":
+                return value[:13] + "Z" + value[14:]
+            return value
+
+        company_gstin = re.search(rf"company['’]?s\s+gstin\s*[:\-]?\s*({gstin_pattern})", text, re.I)
+        if company_gstin:
+            extracted["vendor_tax_id"] = (normalize_ocr_gstin(company_gstin.group(1)), source)
+
+        bill_to = re.search(r"\bbill\s+to\b", text, re.I)
+        if bill_to:
+            buyer_block = text[bill_to.end():company_gstin.start() if company_gstin else len(text)]
+            buyer_gstin = re.search(rf"\bgstin\s*[:\-]?\s*({gstin_pattern})", buyer_block, re.I)
+            if buyer_gstin:
+                extracted["buyer_tax_id"] = (normalize_ocr_gstin(buyer_gstin.group(1)), source)
 
     @staticmethod
     def _source_for_region(document_id: str, region: Region, original_text: str) -> SourceReference:

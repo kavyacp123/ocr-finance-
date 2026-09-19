@@ -6,7 +6,9 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.models import DocumentResult
 from app.engine.pipeline import OCREngine
-from app.engine.vlm_client import VLLMOCRClient, get_ocr_client_metadata
+from app.engine.ocr_provider import process_document as process_ocr_document
+from app.engine.ocr_space_client import OCRSpaceError
+from app.engine.upload_preprocessor import UploadCompressionError
 from app.utils.files import SUPPORTED_EXTENSIONS, UnsupportedDocumentError, DocumentRenderError
 from app.utils.logging import logger
 from typing import Optional, Dict, Any, List
@@ -39,18 +41,15 @@ async def health_check(request: Request):
     Health check endpoint verifying engine readiness and vLLM inference server reachability.
     """
     engine: OCREngine = request.app.state.ocr_engine
-    engine_reachable = await engine.vlm_client.check_health()
-    inference_engine, ocr_model = get_ocr_client_metadata(engine.vlm_client)
-    vllm_reachable = engine_reachable and isinstance(engine.vlm_client, VLLMOCRClient)
+    vllm_reachable = await engine.vlm_client.check_health()
 
-    status = "ok" if engine_reachable else "degraded"
+    status = "ok" if vllm_reachable or settings.OCR_MOCK_MODE else "degraded"
 
     return {
         "status": status,
         "layout_engine": settings.LAYOUT_MODEL,
-        "ocr_model": ocr_model,
-        "inference_engine": inference_engine,
-        "engine_reachable": engine_reachable,
+        "ocr_model": settings.VLLM_MODEL,
+        "inference_engine": "vLLM",
         "vllm_reachable": vllm_reachable,
         "mock_mode": settings.OCR_MOCK_MODE
     }
@@ -74,10 +73,10 @@ async def get_config():
         "ngram_size": settings.OCR_NGRAM_SIZE,
         "window_size": settings.OCR_WINDOW_SIZE,
         "mock_mode": settings.OCR_MOCK_MODE,
-        "copilot_backend": settings.COPILOT_LLM_BACKEND,
-        "graph_backend": settings.GRAPH_BACKEND,
-        "vector_embedding_provider": settings.VECTOR_EMBEDDING_PROVIDER,
-        "save_debug_artifacts": settings.SAVE_DEBUG_ARTIFACTS
+        "save_debug_artifacts": settings.SAVE_DEBUG_ARTIFACTS,
+        "langchain_enabled": settings.LANGCHAIN_ENABLED,
+        "langchain_provider": settings.LANGCHAIN_MODEL_PROVIDER if settings.LANGCHAIN_ENABLED else None,
+        "langchain_model": settings.LANGCHAIN_MODEL if settings.LANGCHAIN_ENABLED else None,
     }
 
 
@@ -105,10 +104,12 @@ async def process_document_endpoint(
 
     try:
         engine: OCREngine = request.app.state.ocr_engine
-        result = await engine.process_document(
+        result = await process_ocr_document(
+            engine=engine,
             file_path=tmp_path,
+            filename=file.filename,
             output_dir=settings.OUTPUT_DIR,
-            save_debug=save_debug
+            save_debug=save_debug,
         )
         # Update filename in result to reflect original upload filename
         result.filename = file.filename
@@ -119,6 +120,10 @@ async def process_document_endpoint(
         raise HTTPException(status_code=422, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except OCRSpaceError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except UploadCompressionError as e:
+        raise HTTPException(status_code=413, detail=str(e))
     except Exception as e:
         logger.error(f"Error processing upload '{file.filename}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal OCR processing error: {str(e)}")
@@ -192,10 +197,13 @@ async def process_finance_document_endpoint(
     # Step 2: Run OCR outside database locks
     try:
         engine: OCREngine = request.app.state.ocr_engine
-        ocr_result: DocumentResult = await engine.process_document(
+        ocr_result: DocumentResult = await process_ocr_document(
+            engine=engine,
             file_path=tmp_path,
+            filename=file.filename,
             output_dir=settings.OUTPUT_DIR,
             save_debug=save_debug,
+            document_id=doc_id,
         )
         # Update document_id to match registered record
         ocr_result.document_id = doc_id
@@ -340,6 +348,32 @@ async def process_finance_document_endpoint(
         finally:
             db.close()
 
+    except OCRSpaceError as e:
+        logger.warning(f"OCR.Space finance processing rejected '{file.filename}': {e}")
+        db = SessionLocal()
+        try:
+            repo = InvoiceRepository(db)
+            repo.update_document_status(
+                document_id=doc_id,
+                status=ProcessingStatus.FAILED,
+                organization_id=organization_id,
+            )
+        finally:
+            db.close()
+        raise HTTPException(status_code=422, detail=str(e))
+    except UploadCompressionError as e:
+        logger.warning(f"Upload preprocessing rejected '{file.filename}': {e}")
+        db = SessionLocal()
+        try:
+            repo = InvoiceRepository(db)
+            repo.update_document_status(
+                document_id=doc_id,
+                status=ProcessingStatus.FAILED,
+                organization_id=organization_id,
+            )
+        finally:
+            db.close()
+        raise HTTPException(status_code=413, detail=str(e))
     except Exception as e:
         logger.error(f"Error in finance pipeline for '{file.filename}': {e}", exc_info=True)
         # Mark document as FAILED in short DB transaction
@@ -1176,13 +1210,6 @@ async def graph_stats_endpoint(
     """
     if not hasattr(request.app.state, "graph_adapter"):
         raise HTTPException(status_code=503, detail="Graph engine is not initialized.")
-    from app.database.session import SessionLocal
-
-    graph_db = SessionLocal()
-    try:
-        request.app.state.graph_sync.sync_all(organization_id=organization_id, db=graph_db)
-    finally:
-        graph_db.close()
     adapter = request.app.state.graph_adapter
     stats = adapter.get_stats(organization_id=organization_id)
     return stats.model_dump()
@@ -1193,24 +1220,13 @@ async def graph_trace_invoice_endpoint(
     invoice_id: str,
     request: Request,
     depth: int = Query(2, ge=1, le=5),
-    organization_id: str = Query(settings.DEFAULT_ORGANIZATION_ID),
 ):
     """
     Extracts the connected sub-graph ego network surrounding an invoice up to `depth` hops.
     """
     if not hasattr(request.app.state, "graph_adapter"):
         raise HTTPException(status_code=503, detail="Graph engine is not initialized.")
-    from app.database.session import SessionLocal
-
-    graph_db = SessionLocal()
-    try:
-        request.app.state.graph_sync.sync_all(organization_id=organization_id, db=graph_db)
-    finally:
-        graph_db.close()
     adapter = request.app.state.graph_adapter
-    root = adapter.get_node(invoice_id)
-    if not root or root.properties.get("organization_id") != organization_id:
-        raise HTTPException(status_code=404, detail=f"Invoice graph '{invoice_id}' not found.")
     subgraph = adapter.get_subgraph(root_node_id=invoice_id, max_depth=depth)
     return subgraph.model_dump()
 
@@ -1220,24 +1236,13 @@ async def graph_vendor_network_endpoint(
     vendor_id: str,
     request: Request,
     depth: int = Query(2, ge=1, le=4),
-    organization_id: str = Query(settings.DEFAULT_ORGANIZATION_ID),
 ):
     """
     Extracts all connected invoices, purchase orders, aliases, and banking nodes for a vendor.
     """
     if not hasattr(request.app.state, "graph_adapter"):
         raise HTTPException(status_code=503, detail="Graph engine is not initialized.")
-    from app.database.session import SessionLocal
-
-    graph_db = SessionLocal()
-    try:
-        request.app.state.graph_sync.sync_all(organization_id=organization_id, db=graph_db)
-    finally:
-        graph_db.close()
     adapter = request.app.state.graph_adapter
-    root = adapter.get_node(vendor_id)
-    if not root or root.properties.get("organization_id") != organization_id:
-        raise HTTPException(status_code=404, detail=f"Vendor graph '{vendor_id}' not found.")
     subgraph = adapter.get_subgraph(root_node_id=vendor_id, max_depth=depth)
     return subgraph.model_dump()
 
@@ -1247,7 +1252,6 @@ async def graph_shared_entities_endpoint(
     request: Request,
     target_type: str = Query("BankAccount", description="BankAccount or TaxIdentifier"),
     min_connections: int = Query(2, ge=2, description="Minimum number of vendors sharing this entity"),
-    organization_id: str = Query(settings.DEFAULT_ORGANIZATION_ID),
 ):
     """
     Risk & Fraud analysis: detects multiple vendors sharing an identical bank account or tax ID.
@@ -1260,13 +1264,6 @@ async def graph_shared_entities_endpoint(
         shared_target_label=target_type,
         min_connections=min_connections,
     )
-    shared = [
-        result for result in shared
-        if (
-            (node := adapter.get_node(result.shared_node_id))
-            and node.properties.get("organization_id") == organization_id
-        )
-    ]
     return {
         "target_type": target_type,
         "total_shared_entities": len(shared),
@@ -1425,6 +1422,12 @@ async def investigate_endpoint(
             organization_id=org_id,
             scope=payload.scope,
         )
+        narrator = getattr(request.app.state, "langchain_narrator", None)
+        if narrator:
+            narration = await narrator.narrate_investigation(payload.question, report)
+            if narration:
+                report.summary = narration.summary
+                report.conclusion = narration.conclusion
     except Exception as e:
         logger.error(f"INVESTIGATION_ENDPOINT_ERROR: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Investigation failed: {str(e)}")

@@ -73,6 +73,62 @@ To run offline pipeline tests without an active vLLM GPU server, set in `.env`:
 OCR_MOCK_MODE=true
 ```
 
+### Optional: OCR.Space provider
+
+The existing `/ocr` and `/finance/process` endpoints can use OCR.Space instead of the local layout/VLM pipeline. OCR.Space results are converted into the same `DocumentResult` shape, so classification, finance extraction, persistence, graph sync, and vector indexing continue to run. Oversized images and PDFs are recompressed when possible. CSV, TXT, XLSX, and DOCX files are parsed locally and sent directly to classification and finance extraction without an OCR.Space request; images and PDFs continue through OCR.Space.
+
+Set these values in `.env` (keep the API key out of Git):
+```env
+OCR_PROVIDER=ocr_space
+OCR_SPACE_API_KEY=your_ocr_space_api_key
+```
+
+The integration rejects files larger than 1,000,000 bytes and PDFs with more than 3 pages before making the API request. The free OCR.Space plan may also enforce its own daily or rate limits.
+
+### Optional: LangChain intelligence narration
+
+Finance Copilot and Investigations remain deterministic and evidence-backed. LangChain is an optional narration layer: it receives validated plans, tool results, report calculations, and evidence, then rewrites only user-facing prose. It cannot execute arbitrary SQL, change financial values, create graph relationships, or replace rules and anomaly calculations. If it is disabled, unavailable, or fails, the deterministic response is returned.
+
+Enable it in `.env` with an OpenAI-compatible model endpoint:
+```env
+LANGCHAIN_ENABLED=true
+LANGCHAIN_MODEL_PROVIDER=openai_compatible
+LANGCHAIN_API_KEY=your_model_api_key
+LANGCHAIN_BASE_URL=https://api.openai.com/v1
+LANGCHAIN_MODEL=gpt-4o-mini
+LANGCHAIN_TEMPERATURE=0
+LANGCHAIN_REQUIRE_EVIDENCE=true
+```
+
+For a local model, set `LANGCHAIN_BASE_URL` to that model server's `/v1` endpoint. Do not point it at the LedgerLens FastAPI URL unless a separate model service is serving there.
+
+### Grok 4.6
+
+For backend Copilot and Investigation narration, configure xAI's OpenAI-compatible API:
+```env
+LANGCHAIN_ENABLED=true
+LANGCHAIN_MODEL_PROVIDER=xai
+XAI_API_KEY=your_xai_api_key
+LANGCHAIN_BASE_URL=https://api.x.ai/v1
+LANGCHAIN_MODEL=grok-4.6
+```
+
+The Puter `puter.ai.chat()` example is browser-side JavaScript and is not used for backend finance answers. Calling it from the browser would bypass the server's tenant isolation and evidence validation. The xAI provider keeps Grok behind the existing grounded backend flow.
+
+### Gemini
+
+To use Google Gemini instead of Grok, configure:
+```env
+LANGCHAIN_ENABLED=true
+LANGCHAIN_MODEL_PROVIDER=gemini
+GEMINI_API_KEY=your_gemini_api_key
+LANGCHAIN_MODEL=gemini-2.5-flash
+LANGCHAIN_TEMPERATURE=0
+LANGCHAIN_REQUIRE_EVIDENCE=true
+```
+
+Gemini only narrates verified Copilot and Investigation results. It does not replace the deterministic finance tools or calculations.
+
 ---
 
 ## 5. Running the vLLM Inference Server

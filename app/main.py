@@ -64,6 +64,7 @@ async def lifespan(app: FastAPI):
     app.state.vector_store = VectorStore(persist_path=settings.VECTOR_INDEX_PATH)
 
     from app.intelligence.copilot import FinanceCopilotService
+    from app.intelligence.langchain_narrator import LangChainNarrator
     from app.investigations.engine import FinanceInvestigationEngine
     from app.intelligence.tools.sql_tool import FinanceSQLTool
     from app.intelligence.tools.graph_tool import FinanceGraphTool
@@ -71,11 +72,14 @@ async def lifespan(app: FastAPI):
     from app.intelligence.tools.rules_tool import FinanceRulesTool
     from app.intelligence.tools.anomaly_tool import FinanceAnomalyTool
 
+    app.state.langchain_narrator = LangChainNarrator.from_settings()
+
     app.state.copilot = FinanceCopilotService.create_default(
         graph_adapter=graph_adapter,
         vector_store=app.state.vector_store,
         rule_engine=app.state.rule_engine,
         anomaly_detector=app.state.anomaly_detector,
+        narrator=app.state.langchain_narrator,
     )
 
     app.state.investigation_engine = FinanceInvestigationEngine(

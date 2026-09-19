@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     VLLM_MAX_TOKENS: int = 4096
 
     # OCR / INFERENCE PIPELINE
+    OCR_PROVIDER: Literal["local", "ocr_space"] = "local"
+    OCR_SPACE_API_KEY: str = ""
+    OCR_SPACE_URL: str = "https://api.ocr.space/Parse/Image"
+    OCR_SPACE_LANGUAGE: str = "eng"
+    OCR_SPACE_MAX_FILE_BYTES: int = 1_000_000
+    OCR_SPACE_MAX_PDF_PAGES: int = 3
+    OCR_SPACE_TIMEOUT_SECONDS: float = 120.0
     OCR_CONCURRENCY: int = 8
     OCR_NGRAM_SIZE: int = 35
     OCR_WINDOW_SIZE: int = 128
@@ -107,6 +114,17 @@ class Settings(BaseSettings):
     COPILOT_LLM_MODEL: str = "gpt-4o"
     COPILOT_MAX_CONTEXT_RESULTS: int = 10
     COPILOT_CONFIDENCE_THRESHOLD: float = 0.5
+    LANGCHAIN_ENABLED: bool = False
+    LANGCHAIN_API_KEY: str = ""
+    LANGCHAIN_MODEL_PROVIDER: str = "gemini"
+    LANGCHAIN_MODEL: str = "gemini-2.5-flash"
+    LANGCHAIN_BASE_URL: str = ""
+    GEMINI_API_KEY: str = ""
+    XAI_API_KEY: str = ""
+    LANGCHAIN_TEMPERATURE: float = 0.0
+    LANGCHAIN_MAX_TOKENS: int = 1200
+    LANGCHAIN_TIMEOUT_SECONDS: float = 30.0
+    LANGCHAIN_REQUIRE_EVIDENCE: bool = True
 
     @property
     def finance_validation_tolerance_decimal(self):
